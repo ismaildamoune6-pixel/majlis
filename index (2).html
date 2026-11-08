@@ -1,0 +1,1454 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>المجلس | القاعة الصوتية</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Kufi+Arabic:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+:root{
+  --paper:#EEF1F5; --surface:#FFFFFF; --ink:#14213A; --muted:#566275; --line:#D3D9E2;
+  --navy:#0F2A4A; --navy-2:#1C3D66; --brass:#9C7A33; --brass-soft:#F3EBD9; --red:#B3261E; --red-dark:#8E1B15;
+  --ok:#1F6B4A; --hud:rgba(12,26,46,.86); --hud-ink:#F2F5F9; --hud-line:rgba(255,255,255,.14);
+  --kufi:"Noto Kufi Arabic", "Segoe UI", Tahoma, sans-serif;
+  --plex:"IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif;
+  color-scheme: light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0D1626; --surface:#15213A; --ink:#E7ECF3; --muted:#9AA7BA; --line:#2A3A57;
+    --navy:#2B4F82; --navy-2:#3A6299; --brass:#C9A55A; --brass-soft:#2A2618; --red:#C9352B; --red-dark:#A1271F;
+    --ok:#4FB487; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0D1626; --surface:#15213A; --ink:#E7ECF3; --muted:#9AA7BA; --line:#2A3A57;
+  --navy:#2B4F82; --navy-2:#3A6299; --brass:#C9A55A; --brass-soft:#2A2618; --red:#C9352B; --red-dark:#A1271F;
+  --ok:#4FB487; color-scheme: dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{height:100%;margin:0;background:var(--paper);color:var(--ink);font-family:var(--plex);font-size:16px;line-height:1.6;-webkit-tap-highlight-color:transparent;overflow:hidden}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* ---------- splash ---------- */
+.screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 16px) 16px calc(env(safe-area-inset-bottom,0px) + 16px)}
+#splash{background:var(--navy);z-index:50;transition:opacity .7s ease}
+#splash.out{opacity:0;pointer-events:none}
+.emblem{display:flex;flex-direction:column;align-items:center;gap:18px;color:#F4F1E8;animation:rise 1.1s ease both}
+.emblem svg{width:132px;height:132px}
+.emblem .name{font-family:var(--kufi);font-weight:700;font-size:44px;letter-spacing:0;line-height:1.2}
+.emblem .sub{font-size:15px;opacity:.75}
+@keyframes rise{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.emblem{animation:none}#splash{transition:none}}
+
+/* ---------- setup ---------- */
+#setup{overflow:auto;align-items:flex-start}
+.card{width:min(560px,100%);margin:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;box-shadow:0 1px 0 var(--line);overflow:hidden}
+.card-head{display:flex;align-items:center;gap:12px;padding:18px 22px;background:var(--navy);color:#F4F1E8}
+.card-head svg{width:38px;height:38px;flex:none}
+.card-head h1{font-family:var(--kufi);font-size:20px;margin:0;line-height:1.3}
+.card-head p{margin:0;font-size:13px;opacity:.8}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
+.steps li{list-style:none;padding:10px 6px;text-align:center;font-size:13px;color:var(--muted);border-bottom:3px solid transparent}
+.steps li b{display:block;font-family:var(--kufi);font-size:15px}
+.steps li.on{color:var(--ink);border-bottom-color:var(--brass)}
+.steps li.done{color:var(--ok)}
+.steps{margin:0;padding:0}
+.step{padding:22px}
+.step h2{font-family:var(--kufi);font-size:19px;margin:0 0 6px}
+.step .hint{color:var(--muted);font-size:14px;margin:0 0 16px}
+.field{display:block;width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:4px;background:var(--paper);font-size:17px}
+.field:focus{border-color:var(--navy-2);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--navy-2) 25%,transparent)}
+.err{color:var(--red);font-size:14px;min-height:22px;margin-top:6px}
+.choice{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.opt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 10px;border:1.5px solid var(--line);border-radius:4px;background:var(--paper);font-weight:600}
+.opt svg{width:40px;height:40px}
+.opt[aria-pressed="true"]{border-color:var(--navy-2);background:color-mix(in srgb,var(--navy-2) 10%,var(--surface));box-shadow:inset 0 0 0 1.5px var(--navy-2)}
+.sublabel{font-weight:600;margin:20px 0 8px;font-size:15px}
+.preview{height:230px;border:1px solid var(--line);border-radius:4px;background:linear-gradient(#E9EDF3,#D7DEE8);margin-bottom:14px;position:relative;overflow:hidden}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .preview{background:linear-gradient(#22314D,#18233A)}}
+.preview canvas{display:block;width:100%;height:100%}
+.preview .tag{position:absolute;bottom:8px;inset-inline-start:10px;font-size:12px;color:var(--muted);background:var(--surface);padding:2px 8px;border-radius:3px}
+.swatches{display:flex;flex-wrap:wrap;gap:10px}
+.sw{width:38px;height:38px;border-radius:50%;border:2px solid var(--surface);box-shadow:0 0 0 1.5px var(--line);padding:0}
+.sw[aria-pressed="true"]{box-shadow:0 0 0 3px var(--brass)}
+.notice{display:flex;gap:14px;padding:16px;border:1px solid color-mix(in srgb,var(--red) 40%,var(--line));background:color-mix(in srgb,var(--red) 7%,var(--surface));border-radius:4px}
+.notice svg{width:34px;height:34px;flex:none;color:var(--red)}
+.notice p{margin:0;font-size:15px}
+.check{display:flex;align-items:center;gap:10px;margin:16px 0 4px;font-weight:600}
+.check input{width:22px;height:22px;accent-color:var(--navy-2)}
+.summary{margin:14px 0 0;padding:12px 14px;background:var(--paper);border-radius:4px;font-size:14px;color:var(--muted)}
+.summary strong{color:var(--ink)}
+.nav{display:flex;justify-content:space-between;gap:12px;padding:0 22px 22px}
+.btn{border:1.5px solid var(--line);background:var(--surface);padding:11px 20px;border-radius:4px;font-weight:600}
+.btn.primary{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.enter{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-top:18px;padding:16px;background:var(--red);border:0;border-radius:4px;color:#fff;font-family:var(--kufi);font-size:19px;font-weight:700;box-shadow:0 3px 0 var(--red-dark)}
+.enter:active{transform:translateY(2px);box-shadow:0 1px 0 var(--red-dark)}
+.enter:disabled{background:#B9A6A4;box-shadow:none;cursor:not-allowed}
+.live{font-size:13px;color:var(--muted);text-align:center;padding:0 22px 18px}
+
+/* ---------- hall ---------- */
+#hall{position:fixed;inset:0;background:#20262E}
+#scene{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.topbar{position:fixed;top:0;left:0;right:0;z-index:5;display:flex;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 8px;background:var(--hud);color:var(--hud-ink);border-bottom:1px solid var(--hud-line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-family:var(--kufi);font-weight:700;font-size:15px;white-space:nowrap}
+.topbar .brand svg{width:26px;height:26px}
+.chip{font-size:12px;padding:3px 9px;border-radius:12px;background:rgba(255,255,255,.1);white-space:nowrap}
+.chip.on::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#46C08A;margin-inline-end:6px;vertical-align:middle}
+.chip.off::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#E0A43A;margin-inline-end:6px;vertical-align:middle}
+.spacer{flex:1}
+.icobtn{position:relative;display:grid;place-items:center;width:40px;height:40px;border-radius:8px;border:1px solid var(--hud-line);background:rgba(255,255,255,.06);color:var(--hud-ink)}
+.icobtn svg{width:21px;height:21px}
+.badge{position:absolute;top:-4px;inset-inline-end:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;line-height:18px;text-align:center}
+.controls{position:fixed;bottom:0;left:0;right:0;z-index:5;display:flex;justify-content:center;gap:6px;padding:8px 8px calc(env(safe-area-inset-bottom,0px) + 8px);background:var(--hud);border-top:1px solid var(--hud-line)}
+.ctl{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:62px;padding:7px 6px;border-radius:8px;border:1px solid var(--hud-line);background:rgba(255,255,255,.06);color:var(--hud-ink);font-size:12px;font-weight:600}
+.ctl svg{width:24px;height:24px}
+.ctl.active{background:#1F6B4A;border-color:#2E8A60}
+.ctl.hand.active{background:var(--brass);border-color:var(--brass);color:#14110A}
+.ctl.locked{opacity:.55}
+.ctl.exit{background:var(--red);border-color:var(--red)}
+.ctl.pulse{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(201,165,90,.0)}50%{box-shadow:0 0 0 5px rgba(201,165,90,.55)}}
+@media (prefers-reduced-motion:reduce){.ctl.pulse{animation:none;border-color:var(--brass)}}
+.seatcue{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);left:50%;transform:translateX(-50%);z-index:5;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:22px;padding:8px 16px;font-weight:600;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.25);white-space:nowrap}
+.toasts{position:fixed;top:calc(env(safe-area-inset-top,0px) + 66px);left:50%;transform:translateX(-50%);z-index:30;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92vw,440px)}
+.toast{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-inline-start:4px solid var(--brass);padding:9px 14px;border-radius:4px;font-size:14px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.joy{position:fixed;left:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 92px);z-index:5;width:118px;height:118px;border-radius:50%;background:rgba(12,26,46,.45);border:1.5px solid rgba(255,255,255,.35);touch-action:none}
+.joy i{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:50%;background:rgba(255,255,255,.85)}
+.keyshelp{position:fixed;left:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 86px);z-index:4;color:#fff;font-size:12px;background:rgba(12,26,46,.6);padding:6px 10px;border-radius:4px;line-height:1.7}
+@media (pointer:coarse){.keyshelp{display:none}}
+@media (pointer:fine){.joy{display:none}}
+
+.drawer{position:fixed;top:0;bottom:0;inset-inline-start:0;z-index:20;width:min(380px,100%);background:var(--surface);color:var(--ink);border-inline-end:1px solid var(--line);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-shadow:0 0 30px rgba(0,0,0,.3)}
+.drawer header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line)}
+.drawer h3{margin:0;font-family:var(--kufi);font-size:17px}
+.drawer .x{border:0;background:none;width:38px;height:38px;border-radius:6px;font-size:22px;line-height:1}
+.drawer .body{flex:1;overflow:auto;padding:12px 16px}
+.section-t{font-weight:600;font-size:14px;color:var(--muted);margin:14px 0 8px}
+.person{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.person .av{width:34px;height:34px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;font-weight:700;font-size:14px}
+.person .meta{flex:1;min-width:0}
+.person .nm{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.person .sb{font-size:12px;color:var(--muted)}
+.person .tags{display:flex;gap:4px;align-items:center}
+.tag2{font-size:11px;padding:1px 7px;border-radius:10px;background:var(--paper);border:1px solid var(--line);white-space:nowrap}
+.tag2.t{background:var(--brass-soft);border-color:var(--brass);color:var(--ink)}
+.tag2.h{background:var(--brass);border-color:var(--brass);color:#14110A}
+.tag2.s{background:#1F6B4A;border-color:#1F6B4A;color:#fff}
+.mini{border:1px solid var(--line);background:var(--paper);border-radius:4px;padding:4px 9px;font-size:12px;font-weight:600}
+.mini.go{background:var(--ok);border-color:var(--ok);color:#fff}
+.mini.stop{background:var(--red);border-color:var(--red);color:#fff}
+.tpanel{border:1px solid var(--line);border-radius:4px;padding:12px;background:var(--paper)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.switch{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:600;font-size:14px}
+.switch input{width:20px;height:20px;accent-color:var(--ok)}
+textarea.field{min-height:84px;resize:vertical;font-size:15px}
+.chatlog{display:flex;flex-direction:column;gap:8px}
+.msg{background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:7px 10px;font-size:14px;overflow-wrap:anywhere}
+.msg b{display:block;font-size:12px;color:var(--brass)}
+.msg.me{border-inline-start:3px solid var(--navy-2)}
+.chatform{display:flex;gap:8px;padding:10px 16px;border-top:1px solid var(--line)}
+.chatform input{flex:1;font-size:15px;padding:9px 12px}
+.empty{color:var(--muted);font-size:14px;padding:18px 0;text-align:center}
+
+.modal{position:fixed;inset:0;z-index:40;background:rgba(5,12,24,.6);display:grid;place-items:center;padding:16px}
+.modal .box{background:var(--surface);color:var(--ink);border-radius:6px;padding:22px;width:min(400px,100%);border-top:4px solid var(--red)}
+.modal h3{margin:0 0 8px;font-family:var(--kufi);font-size:18px}
+.modal p{margin:0 0 18px;color:var(--muted);font-size:15px}
+.modal .row{justify-content:flex-start}
+.btn.red{background:var(--red);border-color:var(--red);color:#fff}
+
+#exit{background:var(--navy);color:#F4F1E8;flex-direction:column;text-align:center;gap:14px;z-index:45}
+#exit h2{font-family:var(--kufi);margin:0;font-size:24px}
+#exit p{margin:0;opacity:.8;max-width:420px}
+#exit .btn{background:transparent;border-color:rgba(255,255,255,.4);color:#fff}
+
+@media (max-width:420px){
+  .ctl{min-width:56px;font-size:11px;padding:6px 4px}
+  .topbar .brand span{display:none}
+  .emblem .name{font-size:36px}
+}
+</style>
+</head>
+<body>
+
+<!-- Splash -->
+<div id="splash" class="screen" aria-label="شعار المنصة">
+  <div class="emblem">
+    <svg viewBox="0 0 120 120" aria-hidden="true">
+      <path d="M20 108V54a40 40 0 0 1 80 0v54" fill="none" stroke="#C9A55A" stroke-width="5"/>
+      <path d="M32 108V56a28 28 0 0 1 56 0v52" fill="none" stroke="#C9A55A" stroke-width="2.5" opacity=".6"/>
+      <rect x="53" y="44" width="14" height="26" rx="7" fill="#F4F1E8"/>
+      <path d="M46 62a14 14 0 0 0 28 0" fill="none" stroke="#F4F1E8" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M60 76v9M50 85h20" stroke="#F4F1E8" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M14 108h92" stroke="#C9A55A" stroke-width="5" stroke-linecap="round"/>
+    </svg>
+    <div class="name">المجلس</div>
+    <div class="sub">منصة القاعات الصوتية الرسمية</div>
+  </div>
+</div>
+
+<!-- Setup -->
+<div id="setup" class="screen" hidden>
+  <div class="card">
+    <div class="card-head">
+      <svg viewBox="0 0 120 120" aria-hidden="true"><path d="M20 108V54a40 40 0 0 1 80 0v54" fill="none" stroke="#C9A55A" stroke-width="7"/><rect x="52" y="42" width="16" height="30" rx="8" fill="#F4F1E8"/><path d="M14 108h92" stroke="#C9A55A" stroke-width="7" stroke-linecap="round"/></svg>
+      <div><h1>تسجيل الدخول إلى القاعة</h1><p>أكمل البيانات التالية قبل الدخول</p></div>
+    </div>
+    <ol class="steps" id="stepsBar">
+      <li data-s="1"><b>1</b>الاسم</li>
+      <li data-s="2"><b>2</b>الجنس</li>
+      <li data-s="3"><b>3</b>اللباس</li>
+      <li data-s="4"><b>4</b>الدخول</li>
+    </ol>
+
+    <section class="step" data-step="1">
+      <h2>الاسم الكامل</h2>
+      <p class="hint">يظهر اسمك فوق شخصيتك داخل القاعة وفي قائمة الحاضرين.</p>
+      <input id="nameIn" class="field" type="text" maxlength="40" autocomplete="name" placeholder="مثال: محمد عبد الله العلوي">
+      <div class="err" id="nameErr"></div>
+      <div class="sublabel" style="margin-top:4px">رمز القاعة</div>
+      <input id="codeIn" class="field" type="text" maxlength="24" dir="ltr" autocapitalize="off" autocomplete="off" placeholder="majlis">
+      <p class="hint" style="margin:6px 0 0">يدخل الأستاذ والطلاب بالرمز نفسه. أحرف إنجليزية صغيرة وأرقام فقط.</p>
+    </section>
+
+    <section class="step" data-step="2" hidden>
+      <h2>الجنس</h2>
+      <p class="hint">يحدد شكل الشخصية ثلاثية الأبعاد.</p>
+      <div class="choice" role="group" aria-label="الجنس">
+        <button class="opt" data-g="m" aria-pressed="false">
+          <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2"><circle cx="20" cy="11" r="6"/><path d="M11 38V24a9 9 0 0 1 18 0v14"/></svg>ذكر</button>
+        <button class="opt" data-g="f" aria-pressed="false">
+          <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16a8 8 0 0 1 16 0c0 4-2 6-2 6H14s-2-2-2-6z"/><path d="M9 38l3-14h16l3 14"/></svg>أنثى</button>
+      </div>
+      <div id="roleBlock" hidden>
+        <div class="sublabel">صفتك في القاعة</div>
+        <div class="choice" role="group" aria-label="الصفة">
+          <button class="opt" data-r="S" aria-pressed="true">طالب</button>
+          <button class="opt" data-r="T" aria-pressed="false">أستاذ</button>
+        </div>
+      </div>
+      <div class="err" id="gErr"></div>
+    </section>
+
+    <section class="step" data-step="3" hidden>
+      <h2>اللباس المحتشم</h2>
+      <p class="hint">اختر الألوان وجرّبها على شخصيتك. اسحب المعاينة لتدويرها.</p>
+      <div class="preview" id="prevBox"><span class="tag">معاينة</span></div>
+      <div class="sublabel" id="lblO">لون الثوب</div>
+      <div class="swatches" id="swO"></div>
+      <div class="sublabel" id="lblA">لون السترة</div>
+      <div class="swatches" id="swA"></div>
+      <div class="sublabel">لون البشرة</div>
+      <div class="swatches" id="swK"></div>
+    </section>
+
+    <section class="step" data-step="4" hidden>
+      <h2>قبل الدخول</h2>
+      <div class="notice" role="alert">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V5a3 3 0 0 0-5.9-.6"/><path d="M17 16.9A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.1 1.2"/><path d="M12 19v3M8 22h8M2 2l20 20"/></svg>
+        <p><strong>تأكد من إغلاق الميكروفون قبل الدخول.</strong> ستدخل والميكروفون مغلق، ولن يُفتح إلا عندما تضغط زر الميكروفون داخل القاعة، وبإذن الأستاذ.</p>
+      </div>
+      <label class="check"><input type="checkbox" id="micOk"> فهمت، الميكروفون مغلق</label>
+      <div class="summary" id="summary"></div>
+      <button class="enter" id="enterBtn" disabled>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg>
+        دخول القاعة
+      </button>
+    </section>
+
+    <div class="nav">
+      <button class="btn" id="backBtn">السابق</button>
+      <button class="btn primary" id="nextBtn">التالي</button>
+    </div>
+    <div class="live" id="liveCount"></div>
+  </div>
+</div>
+
+<!-- Hall -->
+<div id="hall" hidden>
+  <canvas id="scene" aria-label="القاعة ثلاثية الأبعاد"></canvas>
+  <div class="topbar">
+    <div class="brand"><svg viewBox="0 0 120 120" aria-hidden="true"><path d="M20 108V54a40 40 0 0 1 80 0v54" fill="none" stroke="#C9A55A" stroke-width="8"/><rect x="52" y="42" width="16" height="30" rx="8" fill="#F4F1E8"/></svg><span>قاعة المجلس</span></div>
+    <span class="chip off" id="connChip">وضع فردي</span>
+    <span class="chip" id="timer">00:00</span>
+    <div class="spacer"></div>
+    <button class="icobtn" id="chatBtn" aria-label="المحادثة"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span class="badge" id="chatBadge" hidden>0</span></button>
+    <button class="icobtn" id="peopleBtn" aria-label="الحاضرون"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></svg><span class="badge" id="handBadge" hidden>0</span></button>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="seatcue" id="seatCue" hidden></div>
+  <div class="joy" id="joy"><i id="knob"></i></div>
+  <div class="keyshelp">التحرك: الأسهم أو W A S D<br>التدوير: اسحب بالفأرة<br>الجلوس: انقر على كرسي فارغ<br>M الميكروفون، H اليد، B السبورة</div>
+
+  <nav class="controls" aria-label="أدوات القاعة">
+    <button class="ctl locked" id="micBtn" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" id="micIco"></svg><span id="micLbl">الميكروفون</span></button>
+    <button class="ctl hand" id="handBtn" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 8 8h1a7 7 0 0 0 5-2.1l.6-.7a3 3 0 0 0 .4-3.4L19 13a2 2 0 0 0-1-2"/></svg><span id="handLbl">رفع اليد</span></button>
+    <button class="ctl" id="panelBtn" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg><span>التحكم</span></button>
+    <button class="ctl" id="seatBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3h12v9H6zM4 12h16v3H4zM6 15v6M18 15v6"/></svg><span id="seatLbl">مقعد</span></button>
+    <button class="ctl" id="boardBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="13" rx="1"/><path d="M8 21l4-5 4 5"/></svg><span>السبورة</span></button>
+    <button class="ctl exit" id="exitBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg><span>انسحاب</span></button>
+  </nav>
+
+  <aside class="drawer" id="peopleDrawer" hidden aria-label="الحاضرون">
+    <header><h3>الحاضرون <span id="peopleCount"></span></h3><button class="x" data-close aria-label="إغلاق">×</button></header>
+    <div class="body">
+      <div id="teacherPanel" hidden>
+        <div class="tpanel">
+          <div class="section-t" style="margin-top:0">رابط القاعة للطلاب</div>
+          <div class="row" style="margin:0 0 12px"><input class="field" id="roomLink" readonly dir="ltr" style="font-size:13px;flex:1;min-width:0;padding:8px 10px"><button class="mini go" id="copyLink">نسخ</button></div>
+          <label class="switch">السماح للجميع بفتح الميكروفون <input type="checkbox" id="openAll"></label>
+          <div class="row">
+            <button class="mini stop" id="muteAll">كتم جميع الطلاب</button>
+            <button class="mini" id="lowerAll">إنزال كل الأيدي</button>
+          </div>
+          <div class="section-t">الكتابة على السبورة</div>
+          <input class="field" id="boardTitle" maxlength="60" placeholder="عنوان الجلسة" style="font-size:15px;margin-bottom:8px">
+          <textarea class="field" id="boardText" maxlength="500" placeholder="اكتب ما تريد عرضه على السبورة"></textarea>
+          <div class="row"><button class="mini go" id="boardSend">عرض على السبورة</button><button class="mini" id="boardClear">مسح السبورة</button></div>
+        </div>
+      </div>
+      <div class="section-t" id="handsT" hidden>الأيدي المرفوعة حسب الترتيب</div>
+      <div id="handsList"></div>
+      <div class="section-t">في القاعة</div>
+      <div id="peopleList"></div>
+    </div>
+  </aside>
+
+  <aside class="drawer" id="chatDrawer" hidden aria-label="المحادثة">
+    <header><h3>المحادثة الكتابية</h3><button class="x" data-close aria-label="إغلاق">×</button></header>
+    <div class="body"><div class="chatlog" id="chatLog"><div class="empty" id="chatEmpty">لا توجد رسائل بعد. اكتب أول رسالة للحاضرين.</div></div></div>
+    <form class="chatform" id="chatForm"><input class="field" id="chatIn" maxlength="300" placeholder="اكتب رسالة" autocomplete="off"><button class="btn primary">إرسال</button></form>
+  </aside>
+
+  <div class="modal" id="exitModal" hidden>
+    <div class="box" role="dialog" aria-modal="true" aria-labelledby="exT">
+      <h3 id="exT">الانسحاب من القاعة</h3>
+      <p>سيُغلق الميكروفون، ويختفي مقعدك وشخصيتك من القاعة فورًا.</p>
+      <div class="row"><button class="btn red" id="exitYes">انسحاب</button><button class="btn" id="exitNo">البقاء</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="exit" class="screen" hidden>
+  <svg viewBox="0 0 120 120" width="84" height="84" aria-hidden="true"><path d="M20 108V54a40 40 0 0 1 80 0v54" fill="none" stroke="#C9A55A" stroke-width="5"/><path d="M14 108h92" stroke="#C9A55A" stroke-width="5" stroke-linecap="round"/></svg>
+  <h2>غادرت القاعة</h2>
+  <p>أُغلق الميكروفون وكُتم الصوت، وأُزيلت شخصيتك من مقعدك. يمكنك إغلاق هذه الصفحة الآن.</p>
+  <button class="btn" id="againBtn">الدخول من جديد</button>
+</div>
+
+<script>
+"use strict";
+/* =========================================================
+   Helpers
+   ========================================================= */
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const lerp = (a,b,t) => a + (b-a)*t;
+function angDiff(a,b){ let d=b-a; while(d>Math.PI) d-=2*Math.PI; while(d<-Math.PI) d+=2*Math.PI; return d; }
+function toast(msg, ms=3200){
+  const t=document.createElement('div'); t.className='toast'; t.textContent=msg;
+  $('toasts').appendChild(t); setTimeout(()=>t.remove(), ms);
+  while($('toasts').children.length>3) $('toasts').firstChild.remove();
+}
+const ICON_MIC_ON='<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/>';
+const ICON_MIC_OFF='<path d="M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V5a3 3 0 0 0-5.9-.6"/><path d="M17 16.9A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.1 1.2"/><path d="M12 19v3M8 22h8M2 2l20 20"/>';
+
+/* =========================================================
+   State
+   ========================================================= */
+const PAL = {
+  o:['#1F2A44','#14161A','#3B3F46','#5B4636','#6E6A5E','#3E4A35','#5A1F2B','#E9E6DF'],
+  a:['#ECE8E0','#14161A','#1F2A44','#7C6B55','#5A1F2B','#3E4A35','#8A8F98','#B9A27A'],
+  k:['#F1D3BC','#E0B793','#C99A73','#A0714F','#6E4A33']
+};
+const S = {
+  name:'', g:'', role:'S', c:{o:PAL.o[0], a:PAL.a[0], k:PAL.k[1]},
+  seat:-1, x:0, z:14.6, yaw:Math.PI, look:{yaw:0,pitch:-0.05}, camPitch:-0.12,
+  hand:false, ht:0, mic:false, joined:false, canEdit:false, roomReady:false, enteredAt:0
+};
+const ST = { open:false, allowed:[], board:'', title:'' }; // teacher-driven state
+let room=null, userCap=null, teacherPeer=null;
+const subs=[];
+
+/* =========================================================
+   Splash -> setup
+   ========================================================= */
+setTimeout(()=>{ $('splash').classList.add('out'); $('setup').hidden=false; setTimeout(()=>$('splash').hidden=true, 750); $('nameIn').focus({preventScroll:true}); }, 3000);
+
+/* =========================================================
+   Network: relay through a public MQTT server (works on all networks).
+   ========================================================= */
+const NS='majlis-hall-v2/';
+const BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt'];
+const qs=new URLSearchParams(location.search);
+function cleanCode(v){ return String(v||'').toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,24); }
+if(qs.get('room')) document.getElementById('codeIn').value=cleanCode(qs.get('room'));
+$('roleBlock').hidden=false;
+function sanitize(p){
+  const o={};
+  if(typeof p.n==='string') o.n=p.n.slice(0,40);
+  o.g=p.g==='f'?'f':'m'; o.r=p.r==='T'?'T':'S';
+  if(Array.isArray(p.c)) o.c=p.c.slice(0,3).map(x=>typeof x==='string'?x.slice(0,7):'');
+  o.s=(typeof p.s==='number'&&p.s>=-1&&p.s<=60)?Math.floor(p.s):-1;
+  if(o.r!=='T' && o.s===60) o.s=-1;
+  if(Array.isArray(p.p)) o.p=p.p.slice(0,3).map(x=>+x||0);
+  o.h=p.h?1:0; o.ht=+p.ht||0; o.m=p.m?1:0;
+  return o;
+}
+function makeNet(code, asHost, onStatus){
+  const base=NS+code+'/';
+  const myId='u'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+  const L={}; let peersFn=null, up=false, dead=false, client=null, bi=0, listT=null, beatT=null, sweepT=null, everUp=false;
+  const table=new Map(); // id -> {pr, seen}
+  const myPres={}; let list=[];
+  const fire=(t,m)=>(L[t]||[]).forEach(f=>{ try{f(m)}catch(e){console.error(e)} });
+  function currentHost(){
+    let best=null;
+    for(const [id,v] of table) if(v.pr && v.pr.r==='T' && v.pr.n && (best===null || id<best)) best=id;
+    return best;
+  }
+  function setList(){
+    listT=null;
+    const arr=[...table].filter(([,v])=>v.pr&&v.pr.n).map(([peer,v])=>({peer,presence:v.pr}));
+    const prevIds=new Set(list.map(p=>p.peer)), now=new Set(arr.map(p=>p.peer));
+    const peers=arr.map(p=>({peer:p.peer,presence:p.presence,sameTab:p.peer===myId,isMe:p.peer===myId}));
+    const joined=peers.filter(p=>!prevIds.has(p.peer)), left=list.filter(p=>!now.has(p.peer));
+    list=peers; if(peersFn) peersFn({peers,joined,left});
+    if(asHost && everUp && myPres.n){ const h=currentHost(); if(h && h!==myId) onStatus('taken'); }
+  }
+  const schedList=()=>{ if(!listT) listT=setTimeout(setList,100); };
+  function pubPres(){
+    if(!client||!up) return;
+    try{ client.publish(base+'p/'+myId, JSON.stringify({ts:Date.now(),pr:sanitize(myPres)}), {retain:true,qos:0}); }catch(e){}
+  }
+  function onMessage(topic,payload,packet){
+    if(dead) return;
+    const t=topic.slice(base.length);
+    let txt=''; try{ txt=payload.toString(); }catch(e){ return; }
+    if(t.startsWith('p/')){
+      const id=t.slice(2); if(!id||id.length>40) return;
+      if(!txt){ if(table.delete(id)) schedList(); return; }
+      let d; try{ d=JSON.parse(txt); }catch(e){ return; }
+      if(packet && packet.retain && Date.now()-(+d.ts||0) > 90000) return; // stale ghost
+      table.set(id,{pr:sanitize(d.pr||{}),seen:Date.now()}); schedList(); return;
+    }
+    if(t.startsWith('a/')){
+      const id=t.slice(2); if(txt.length>4000) return;
+      fire('audio',{peer:id,data:{d:txt},sameTab:id===myId,isMe:id===myId}); return;
+    }
+    let d; try{ d=JSON.parse(txt); }catch(e){ return; }
+    if(!d||typeof d!=='object'||typeof d.from!=='string') return;
+    if(t==='ctl'||t==='cmd'){
+      if(d.from!==currentHost()) return; // only the hall's teacher
+      fire('ctl',{peer:d.from,data:d.data||{},sameTab:d.from===myId});
+    } else if(t==='chat' && typeof d.m==='string'){
+      fire('chat',{peer:d.from,data:{m:d.m.slice(0,300)},sameTab:d.from===myId});
+    }
+  }
+  function connect(){
+    if(dead) return;
+    const url=BROKERS[bi%BROKERS.length];
+    const c=mqtt.connect(url,{clientId:myId,clean:true,keepalive:30,reconnectPeriod:3000,connectTimeout:10000,
+      will:{topic:base+'p/'+myId,payload:'',retain:true,qos:0}});
+    client=c;
+    let firstFail=setTimeout(()=>{ if(!everUp && client===c && !dead){ try{c.end(true)}catch(e){} bi++; onStatus('net'); connect(); } },12000);
+    c.on('connect',()=>{
+      clearTimeout(firstFail); up=true; everUp=true;
+      c.subscribe([base+'p/+',base+'ctl',base+'cmd',base+'chat',base+'a/+'],{qos:0});
+      pubPres(); onStatus('ok');
+    });
+    c.on('message',onMessage);
+    c.on('offline',()=>{ if(up){ up=false; onStatus('lost'); } });
+    c.on('close',()=>{ if(up){ up=false; onStatus('lost'); } });
+    c.on('error',()=>{});
+  }
+  beatT=setInterval(pubPres,25000);
+  sweepT=setInterval(()=>{ const now=Date.now(); let ch=false; for(const [id,v] of table) if(id!==myId && now-v.seen>70000){ table.delete(id); ch=true; } if(ch) schedList(); },10000);
+  if(typeof mqtt==='undefined'){ setTimeout(()=>onStatus('lib'),0); }
+  else connect();
+  return {
+    get hostId(){ return currentHost(); }, myId,
+    connected:()=>up,
+    onPeers(fn){ peersFn=fn; },
+    on(t,f){ (L[t]=L[t]||[]).push(f); },
+    presence(p){
+      for(const k in p){ if(p[k]===null) delete myPres[k]; else myPres[k]=p[k]; }
+      table.set(myId,{pr:sanitize(myPres),seen:Date.now()}); schedList();
+      pubPres(); return Promise.resolve();
+    },
+    emit(topic,data){
+      if(!client||!up) return Promise.reject({code:'offline'});
+      if(topic==='ctl'){
+        if(currentHost()!==myId) return Promise.reject({code:'not_permitted'});
+        const isState=data&&data.t==='state';
+        client.publish(base+(isState?'ctl':'cmd'),JSON.stringify({from:myId,data}),{retain:isState,qos:0});
+        return Promise.resolve();
+      }
+      if(topic==='chat'){ client.publish(base+'chat',JSON.stringify({from:myId,m:String((data&&data.m)||'').slice(0,300)}),{qos:0}); return Promise.resolve(); }
+      if(topic==='audio'){ client.publish(base+'a/'+myId,String(data.d||''),{qos:0}); return Promise.resolve(); }
+      return Promise.resolve();
+    },
+    destroy(){
+      dead=true; clearInterval(beatT); clearInterval(sweepT);
+      if(client){ try{ client.publish(base+'p/'+myId,'',{retain:true,qos:0}); }catch(e){} const c=client; setTimeout(()=>{ try{c.end(true)}catch(e){} },300); }
+    }
+  };
+}
+
+/* =========================================================
+   Setup wizard
+   ========================================================= */
+let step=1;
+function showStep(n){
+  step=n;
+  document.querySelectorAll('.step').forEach(s=>s.hidden = +s.dataset.step!==n);
+  document.querySelectorAll('#stepsBar li').forEach(li=>{
+    const s=+li.dataset.s; li.className = s===n?'on':(s<n?'done':'');
+  });
+  $('backBtn').style.visibility = n===1?'hidden':'visible';
+  $('nextBtn').hidden = n===4;
+  if(n===3){ setupSwatches(); initPreview(); }
+  if(n===4){ fillSummary(); }
+}
+function validName(){
+  const v=$('nameIn').value.trim().replace(/\s+/g,' ');
+  if(v.length<5 || v.split(' ').length<2){ $('nameErr').textContent='اكتب الاسم الكامل: الاسم الشخصي واسم العائلة على الأقل.'; return false; }
+  $('nameErr').textContent=''; S.name=v; S.code=cleanCode($('codeIn').value)||'majlis'; $('codeIn').value=S.code; return true;
+}
+$('nameIn').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('nextBtn').click(); }});
+$('nextBtn').onclick=()=>{
+  if(step===1 && !validName()) return;
+  if(step===2 && !S.g){ $('gErr').textContent='اختر الجنس للمتابعة.'; return; }
+  showStep(step+1);
+};
+$('backBtn').onclick=()=>{ if(step>1) showStep(step-1); };
+document.querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{
+  S.g=b.dataset.g; $('gErr').textContent='';
+  document.querySelectorAll('[data-g]').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  S.c.a = S.g==='f' ? PAL.a[1] : PAL.a[0];
+  S.c.o = S.g==='f' ? PAL.o[1] : PAL.o[7];
+});
+document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{
+  S.role=b.dataset.r; document.querySelectorAll('[data-r]').forEach(x=>x.setAttribute('aria-pressed', x===b));
+});
+const COLOR_NAMES={'#1F2A44':'كحلي','#14161A':'أسود','#3B3F46':'رمادي داكن','#5B4636':'بني','#6E6A5E':'زيتي رمادي','#3E4A35':'أخضر زيتوني','#5A1F2B':'عنابي','#E9E6DF':'أبيض عاجي','#ECE8E0':'أبيض','#7C6B55':'بيج داكن','#8A8F98':'رمادي','#B9A27A':'رملي'};
+function setupSwatches(){
+  $('lblO').textContent = S.g==='f' ? 'لون العباءة' : 'لون الثوب';
+  $('lblA').textContent = S.g==='f' ? 'لون الحجاب' : 'لون السترة';
+  const mk=(box,key,list)=>{
+    box.innerHTML='';
+    list.forEach(c=>{
+      const b=document.createElement('button'); b.className='sw'; b.style.background=c;
+      b.setAttribute('aria-label', COLOR_NAMES[c]||c); b.setAttribute('aria-pressed', S.c[key]===c);
+      b.onclick=()=>{ S.c[key]=c; [...box.children].forEach(x=>x.setAttribute('aria-pressed', x===b)); rebuildPreview(); };
+      box.appendChild(b);
+    });
+  };
+  mk($('swO'),'o',PAL.o); mk($('swA'),'a',PAL.a); mk($('swK'),'k',PAL.k);
+  rebuildPreview();
+}
+function fillSummary(){
+  const sm=$('summary'); sm.textContent='';
+  const add=(l,v)=>{ const d=document.createElement('div'); d.append(l+': '); const s=document.createElement('strong'); s.textContent=v; d.append(s); sm.append(d); };
+  add('الاسم', S.name); add('رمز القاعة', S.code); add('الجنس', S.g==='f'?'أنثى':'ذكر'); add('الصفة', S.role==='T'?'أستاذ':'طالب');
+}
+$('micOk').onchange=()=>{ $('enterBtn').disabled=!$('micOk').checked; };
+showStep(1);
+
+/* =========================================================
+   3D: materials & avatar factory
+   ========================================================= */
+const M=(c,o={})=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.75,metalness:0},o));
+
+function makeAvatar(o){
+  const root=new THREE.Group();
+  const outfit=M(o.o,{roughness:.88}), acc=M(o.a,{roughness:.88,side:THREE.DoubleSide});
+  const skin=M(o.k,{roughness:.55}), shoe=M('#17181b',{roughness:.45}), hair=M('#24180f',{roughness:.95}), eye=M('#161616',{roughness:.3});
+  const P={root};
+  const add=(geo,mat,x,y,z,par=root)=>{ const m=new THREE.Mesh(geo,mat); m.position.set(x,y,z); par.add(m); return m; };
+  // torso
+  const torso=add(new THREE.CylinderGeometry(.165,.19,.6,20),outfit,0,1.2,0); torso.scale.z=.72;
+  const sh=add(new THREE.SphereGeometry(.2,20,12),outfit,0,1.47,0); sh.scale.set(1.12,.42,.72);
+  const pelvis=add(new THREE.SphereGeometry(.19,18,10),outfit,0,.92,0); pelvis.scale.set(1,.5,.75);
+  add(new THREE.CylinderGeometry(.048,.054,.1,12),skin,0,1.56,0);
+  // head
+  const head=new THREE.Group(); head.position.y=1.7; root.add(head); P.head=head;
+  const skull=add(new THREE.SphereGeometry(.112,26,18),skin,0,0,0,head); skull.scale.set(.9,1.06,.98);
+  for(const s of [-1,1]){
+    add(new THREE.SphereGeometry(.013,8,6),eye,s*.036,.012,.097,head);
+    const br=add(new THREE.BoxGeometry(.034,.007,.008),hair,s*.037,.04,.097,head); br.rotation.z=s*-.08;
+  }
+  const nose=add(new THREE.ConeGeometry(.014,.042,8),skin,0,-.012,.108,head); nose.rotation.x=Math.PI/2;
+  add(new THREE.BoxGeometry(.038,.006,.006),M('#7a3b33'),0,-.05,.097,head);
+  if(o.g==='f'){
+    const hij=add(new THREE.SphereGeometry(.13,30,20,Math.PI/2+.6,Math.PI*2-1.2),acc,0,.005,-.004,head); hij.scale.set(.95,1.09,1.02);
+    const drape=add(new THREE.CylinderGeometry(.115,.29,.32,26,1,true),acc,0,1.5,0); drape.scale.z=.82;
+    add(new THREE.CylinderGeometry(.105,.115,.08,20,1,true),acc,0,1.6,0);
+  } else {
+    const hr=add(new THREE.SphereGeometry(.118,24,12,0,Math.PI*2,0,Math.PI*.5),hair,0,.01,-.008,head); hr.scale.set(.93,1.05,1.0);
+    for(const s of [-1,1]) add(new THREE.SphereGeometry(.024,8,6),skin,s*.1,0,0,head).scale.set(.5,1,.8);
+    const beard=add(new THREE.SphereGeometry(.104,20,10,0,Math.PI*2,Math.PI*.62,Math.PI*.3),hair,0,-.006,.004,head); beard.scale.set(.88,1.08,.98);
+    const vest=add(new THREE.CylinderGeometry(.172,.196,.52,20,1,true,Math.PI*.12,Math.PI*2-Math.PI*.24),acc,0,1.18,0); vest.scale.z=.76;
+  }
+  // arms
+  const arm=s=>{
+    const shp=new THREE.Group(); shp.position.set(s*.225,1.45,0); root.add(shp);
+    add(new THREE.CylinderGeometry(.056,.049,.31,12),outfit,0,-.15,0,shp);
+    const el=new THREE.Group(); el.position.y=-.3; shp.add(el);
+    add(new THREE.CylinderGeometry(.048,.041,.27,12),outfit,0,-.135,0,el);
+    const hd=add(new THREE.SphereGeometry(.043,12,10),skin,0,-.3,0,el); hd.scale.set(.8,1.1,.6);
+    return {sh:shp,el};
+  };
+  P.armR=arm(-1); P.armL=arm(1);
+  // legs
+  const leg=s=>{
+    const hp=new THREE.Group(); hp.position.set(s*.09,.92,0); root.add(hp);
+    add(new THREE.CylinderGeometry(.082,.066,.45,12),outfit,0,-.225,0,hp);
+    const kn=new THREE.Group(); kn.position.y=-.45; hp.add(kn);
+    add(new THREE.CylinderGeometry(.064,.05,.42,12),outfit,0,-.21,0,kn);
+    add(new THREE.BoxGeometry(.095,.06,.23),shoe,0,-.44,.05,kn);
+    return {hp,kn};
+  };
+  P.legR=leg(-1); P.legL=leg(1);
+  // modest long robe skirt
+  P.skirt=add(new THREE.CylinderGeometry(.2,.3,.84,26,1,true),M(o.o,{roughness:.88,side:THREE.DoubleSide}),0,.5,0);
+  // contact shadow
+  const shd=new THREE.Mesh(new THREE.CircleGeometry(.36,24),new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.22,depthWrite:false}));
+  shd.rotation.x=-Math.PI/2; shd.position.y=.012; root.add(shd); P.shadow=shd;
+  return P;
+}
+function poseAvatar(P, mode, t, hand){
+  const sit = mode==='sit';
+  P.skirt.visible=!sit; P.shadow.visible=!sit;
+  if(sit){
+    P.legL.hp.rotation.x=P.legR.hp.rotation.x=-Math.PI/2;
+    P.legL.kn.rotation.x=P.legR.kn.rotation.x=Math.PI/2;
+    P.armL.sh.rotation.x=-.35; P.armL.el.rotation.x=-1.15;
+    P.armR.sh.rotation.x=-.35; P.armR.el.rotation.x=-1.15;
+    P.armL.sh.rotation.z=P.armR.sh.rotation.z=0;
+  } else {
+    const sw = mode==='walk' ? Math.sin(t*7.5) : 0;
+    P.legL.hp.rotation.x= sw*.38; P.legR.hp.rotation.x=-sw*.38;
+    P.legL.kn.rotation.x= Math.max(0,-sw)*.5; P.legR.kn.rotation.x=Math.max(0,sw)*.5;
+    P.armL.sh.rotation.x=-sw*.32; P.armR.sh.rotation.x= sw*.32;
+    P.armL.el.rotation.x=P.armR.el.rotation.x=-.12;
+    P.armL.sh.rotation.z=.06; P.armR.sh.rotation.z=-.06;
+  }
+  if(hand){ P.armR.sh.rotation.x=-2.85; P.armR.sh.rotation.z=-.15; P.armR.el.rotation.x=-.15; }
+  P.head.rotation.x = sit ? .06 : 0;
+}
+
+/* name label sprite */
+function roundRect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+function makeLabel(){
+  const cv=document.createElement('canvas'); cv.width=512; cv.height=128;
+  const tex=new THREE.CanvasTexture(cv); tex.minFilter=THREE.LinearFilter;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false}));
+  sp.scale.set(1.15,.2875,1); sp.renderOrder=10;
+  sp.userData={cv,tex,key:''};
+  return sp;
+}
+function drawLabel(sp, name, teacher, hand, speaking, mic){
+  const key=[name,teacher,hand,speaking,mic].join('|'); if(sp.userData.key===key) return; sp.userData.key=key;
+  const c=sp.userData.cv.getContext('2d'); c.clearRect(0,0,512,128);
+  c.font='600 40px "IBM Plex Sans Arabic", Tahoma, sans-serif'; c.direction='rtl';
+  let txt=(hand?'✋ ':'')+(teacher?'الأستاذ ':'')+name; if(txt.length>30) txt=txt.slice(0,29)+'…';
+  const w=Math.min(500, c.measureText(txt).width+48);
+  const x=(512-w)/2;
+  roundRect(c,x,20,w,82,41); c.fillStyle= teacher?'rgba(120,92,34,.92)':'rgba(15,42,74,.88)'; c.fill();
+  if(speaking){ c.lineWidth=7; c.strokeStyle='#5BD69C'; c.stroke(); }
+  else if(mic){ c.lineWidth=4; c.strokeStyle='rgba(91,214,156,.6)'; c.stroke(); }
+  c.fillStyle='#fff'; c.textAlign='center'; c.textBaseline='middle'; c.fillText(txt,256,63);
+  sp.userData.tex.needsUpdate=true;
+}
+
+/* =========================================================
+   Preview renderer (step 3)
+   ========================================================= */
+let prev=null;
+function initPreview(){
+  if(prev) return;
+  const box=$('prevBox');
+  const r=new THREE.WebGLRenderer({antialias:true,alpha:true}); r.setPixelRatio(Math.min(devicePixelRatio,2));
+  box.prepend(r.domElement);
+  const sc=new THREE.Scene();
+  sc.add(new THREE.HemisphereLight(0xffffff,0x8a8f99,1.0));
+  const d=new THREE.DirectionalLight(0xffffff,.8); d.position.set(2,3,3); sc.add(d);
+  const cam=new THREE.PerspectiveCamera(30,1,.1,20); cam.position.set(0,1.15,4.1); cam.lookAt(0,.95,0);
+  const holder=new THREE.Group(); sc.add(holder);
+  prev={r,sc,cam,holder,av:null,rot:.4,drag:null};
+  r.domElement.addEventListener('pointerdown',e=>{prev.drag=e.clientX; r.domElement.setPointerCapture(e.pointerId);});
+  r.domElement.addEventListener('pointermove',e=>{ if(prev.drag!==null){ prev.rot+=(e.clientX-prev.drag)*.012; prev.drag=e.clientX; }});
+  r.domElement.addEventListener('pointerup',()=>prev.drag=null);
+  r.domElement.style.touchAction='none';
+  rebuildPreview();
+  const loop=()=>{
+    if(!prev) return;
+    const w=box.clientWidth,h=box.clientHeight;
+    if(r.domElement.width!==Math.floor(w*r.getPixelRatio())){ r.setSize(w,h,false); cam.aspect=w/h; cam.updateProjectionMatrix(); }
+    if(prev.drag===null && !matchMedia('(prefers-reduced-motion: reduce)').matches) prev.rot+=.006;
+    holder.rotation.y=prev.rot;
+    if(!$('setup').hidden) r.render(sc,cam);
+    requestAnimationFrame(loop);
+  };
+  loop();
+}
+function rebuildPreview(){
+  if(!prev) return;
+  if(prev.av) prev.holder.remove(prev.av.root);
+  prev.av=makeAvatar({g:S.g||'m',o:S.c.o,a:S.c.a,k:S.c.k}); poseAvatar(prev.av,'stand',0,false);
+  prev.holder.add(prev.av.root);
+}
+
+/* =========================================================
+   The hall
+   ========================================================= */
+let renderer, scene, camera, raycaster, boardTex, boardCv;
+const seats=[]; // {x,z,yaw,group,mats}
+const obstacles=[]; // AABB {x1,x2,z1,z2}
+const HALL={x:10,zMin:-17,zMax:16};
+const BOARD={x:0,y:2.35,z:-16.85};
+const TEACHER_SEAT=60;
+
+function plankTexture(){
+  const c=document.createElement('canvas'); c.width=512; c.height=512; const g=c.getContext('2d');
+  const tones=['#B38B5F','#A88056','#BC9568','#A27A50','#B08659'];
+  for(let row=0;row<8;row++){
+    let x=-(row*97%160);
+    while(x<512){ const w=160+((row*31+x)%90); g.fillStyle=tones[(row+Math.abs(x))%tones.length]; g.fillRect(x,row*64,w,64);
+      g.strokeStyle='rgba(60,40,20,.35)'; g.lineWidth=2; g.strokeRect(x+1,row*64+1,w-2,62);
+      for(let k=0;k<5;k++){ g.strokeStyle='rgba(80,55,30,.08)'; g.beginPath(); const yy=row*64+8+k*11; g.moveTo(x,yy); g.bezierCurveTo(x+w*.3,yy+4,x+w*.6,yy-4,x+w,yy); g.stroke(); }
+      x+=w; }
+  }
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(6,10); t.anisotropy=4; return t;
+}
+function makeChair(teacher){
+  const g=new THREE.Group();
+  const leather=M(teacher?'#3A2A1E':'#22355C',{roughness:.5}), frame=M('#2C2F36',{roughness:.4,metalness:.5});
+  const mk=(geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat); m.position.set(x,y,z); g.add(m); return m;};
+  const seat=mk(new THREE.BoxGeometry(.52,.09,.5),leather,0,.46,0);
+  const back=mk(new THREE.BoxGeometry(.5,teacher?.85:.6,.08),leather,0,teacher?.95:.82,-.23); back.rotation.x=-.08;
+  mk(new THREE.CylinderGeometry(.03,.03,.36,10),frame,0,.25,0);
+  for(let i=0;i<5;i++){ const a=i/5*Math.PI*2; const sp=mk(new THREE.BoxGeometry(.04,.03,.3),frame,Math.sin(a)*.14,.05,Math.cos(a)*.14); sp.rotation.y=a; }
+  for(const s of [-1,1]){ mk(new THREE.BoxGeometry(.05,.04,.36),frame,s*.28,.66,-.02); mk(new THREE.BoxGeometry(.03,.2,.03),frame,s*.28,.56,-.12); }
+  g.traverse(o=>{ if(o.isMesh) o.userData.chair=g; });
+  return {g,mats:[leather],base:leather.color.clone()};
+}
+function buildHall(){
+  const cv=$('scene');
+  renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,1.75));
+  scene=new THREE.Scene(); scene.background=new THREE.Color('#C9CED6'); scene.fog=new THREE.Fog('#C9CED6',30,60);
+  camera=new THREE.PerspectiveCamera(62,1,.05,80);
+  raycaster=new THREE.Raycaster();
+  scene.add(new THREE.HemisphereLight(0xfafcff,0x6d5f50,.95));
+  const d1=new THREE.DirectionalLight(0xffffff,.55); d1.position.set(6,12,4); scene.add(d1);
+  const d2=new THREE.DirectionalLight(0xfff3e0,.3); d2.position.set(-8,8,-10); scene.add(d2);
+
+  // floor
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(HALL.x*2,HALL.zMax-HALL.zMin),M('#ffffff',{map:plankTexture(),roughness:.7}));
+  floor.rotation.x=-Math.PI/2; floor.position.z=(HALL.zMax+HALL.zMin)/2; scene.add(floor);
+  const carpet=new THREE.Mesh(new THREE.PlaneGeometry(9.4,26),M('#1D2D4C',{roughness:1}));
+  carpet.rotation.x=-Math.PI/2; carpet.position.set(0,.006,1.4); scene.add(carpet);
+  // walls
+  const wallM=M('#E2E0DB',{roughness:.95}), woodM=M('#5A3E2B',{roughness:.6}), ceilM=M('#F3F3F1',{roughness:1});
+  const H=5, L=HALL.zMax-HALL.zMin, cz=(HALL.zMax+HALL.zMin)/2;
+  const wall=(w,h,x,y,z,ry,m=wallM)=>{const p=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m); p.position.set(x,y,z); p.rotation.y=ry; scene.add(p); return p;};
+  wall(L,H,-HALL.x,H/2,cz,Math.PI/2); wall(L,H,HALL.x,H/2,cz,-Math.PI/2);
+  wall(HALL.x*2,H,0,H/2,HALL.zMin,0); wall(HALL.x*2,H,0,H/2,HALL.zMax,Math.PI);
+  wall(L,1.1,-HALL.x+.01,.55,cz,Math.PI/2,woodM); wall(L,1.1,HALL.x-.01,.55,cz,-Math.PI/2,woodM);
+  wall(HALL.x*2,1.1,0,.55,HALL.zMax-.01,Math.PI,woodM);
+  const ceil=new THREE.Mesh(new THREE.PlaneGeometry(HALL.x*2,L),ceilM); ceil.rotation.x=Math.PI/2; ceil.position.set(0,H,cz); scene.add(ceil);
+  // ceiling light panels
+  const lightM=new THREE.MeshBasicMaterial({color:'#FFFDF6'});
+  for(let i=0;i<6;i++) for(const x of [-4.5,0,4.5]){ const p=new THREE.Mesh(new THREE.BoxGeometry(1.6,.04,.6),lightM); p.position.set(x,H-.03,-13+i*5.4); scene.add(p); }
+  // windows
+  const glass=new THREE.MeshBasicMaterial({color:'#CFE3F2'}), wframe=M('#3A3F48');
+  for(let i=0;i<5;i++) for(const s of [-1,1]){
+    const z=-11+i*5.6;
+    const f=new THREE.Mesh(new THREE.BoxGeometry(.08,2.3,1.9),wframe); f.position.set(s*(HALL.x-.03),2.7,z); scene.add(f);
+    const g=new THREE.Mesh(new THREE.PlaneGeometry(1.7,2.1),glass); g.position.set(s*(HALL.x-.08),2.7,z); g.rotation.y=-s*Math.PI/2; scene.add(g);
+    const bar=new THREE.Mesh(new THREE.BoxGeometry(.04,2.1,.05),wframe); bar.position.set(s*(HALL.x-.09),2.7,z); scene.add(bar);
+  }
+  // door on back wall
+  const door=new THREE.Mesh(new THREE.BoxGeometry(2.2,2.6,.08),M('#4A3324',{roughness:.5})); door.position.set(0,1.3,HALL.zMax-.04); scene.add(door);
+  const dl=new THREE.Mesh(new THREE.BoxGeometry(.04,2.6,.1),M('#2A1D14')); dl.position.set(0,1.3,HALL.zMax-.06); scene.add(dl);
+  const exitSign=new THREE.Mesh(new THREE.BoxGeometry(.7,.22,.04),new THREE.MeshBasicMaterial({color:'#2E8A60'})); exitSign.position.set(0,2.85,HALL.zMax-.05); scene.add(exitSign);
+
+  // board
+  const bf=new THREE.Mesh(new THREE.BoxGeometry(8.4,3.3,.1),M('#30343C',{metalness:.4,roughness:.35})); bf.position.set(BOARD.x,BOARD.y,BOARD.z-.04); scene.add(bf);
+  boardCv=document.createElement('canvas'); boardCv.width=1600; boardCv.height=600;
+  boardTex=new THREE.CanvasTexture(boardCv); boardTex.anisotropy=4;
+  const bp=new THREE.Mesh(new THREE.PlaneGeometry(8,3),new THREE.MeshBasicMaterial({map:boardTex})); bp.position.set(BOARD.x,BOARD.y,BOARD.z+.02); scene.add(bp);
+  const tray=new THREE.Mesh(new THREE.BoxGeometry(8,.06,.16),M('#8D939C',{metalness:.6,roughness:.3})); tray.position.set(0,BOARD.y-1.6,BOARD.z+.08); scene.add(tray);
+  // emblem plaque above board
+  const pc=document.createElement('canvas'); pc.width=512; pc.height=128; const pg=pc.getContext('2d');
+  pg.fillStyle='#0F2A4A'; pg.fillRect(0,0,512,128); pg.strokeStyle='#C9A55A'; pg.lineWidth=6; pg.strokeRect(8,8,496,112);
+  pg.fillStyle='#F4F1E8'; pg.font='700 56px "Noto Kufi Arabic", Tahoma, sans-serif'; pg.textAlign='center'; pg.textBaseline='middle'; pg.direction='rtl'; pg.fillText('المجلس',256,68);
+  const plaque=new THREE.Mesh(new THREE.PlaneGeometry(2.2,.55),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(pc)})); plaque.position.set(0,4.4,HALL.zMin+.02); scene.add(plaque);
+  drawBoard();
+
+  // teacher desk (beside the board)
+  const walnut=M('#4E3324',{roughness:.45});
+  const desk=new THREE.Group(); desk.position.set(6.3,0,-14.3); scene.add(desk);
+  const dt=new THREE.Mesh(new THREE.BoxGeometry(2,.07,.9),walnut); dt.position.y=.78; desk.add(dt);
+  for(const s of [-1,1]){ const side=new THREE.Mesh(new THREE.BoxGeometry(.06,.75,.85),walnut); side.position.set(s*.95,.375,0); desk.add(side); }
+  const front=new THREE.Mesh(new THREE.BoxGeometry(1.9,.6,.04),walnut); front.position.set(0,.45,.42); desk.add(front);
+  const emb=new THREE.Mesh(new THREE.BoxGeometry(.6,.14,.02),M('#9C7A33',{metalness:.6,roughness:.3})); emb.position.set(0,.55,.45); desk.add(emb);
+  const lap=new THREE.Mesh(new THREE.BoxGeometry(.34,.02,.24),M('#9AA0A8',{metalness:.6,roughness:.3})); lap.position.set(.3,.825,-.08); desk.add(lap);
+  const mic=new THREE.Group(); mic.position.set(-.45,.815,0); desk.add(mic);
+  mic.add(new THREE.Mesh(new THREE.CylinderGeometry(.07,.08,.03,16),M('#202227'))); const neck=new THREE.Mesh(new THREE.CylinderGeometry(.008,.008,.35,8),M('#202227')); neck.position.set(0,.17,.04); neck.rotation.x=.3; mic.add(neck);
+  obstacles.push({x1:6.3-1.05,x2:6.3+1.05,z1:-14.3-.5,z2:-14.3+.5});
+
+  // conference table: x ±2.5, z -10..12
+  const top=new THREE.Mesh(new THREE.BoxGeometry(5,.08,22),walnut); top.position.set(0,.74,1); scene.add(top);
+  const inlay=new THREE.Mesh(new THREE.BoxGeometry(1.2,.005,20.6),M('#7A5A40',{roughness:.4})); inlay.position.set(0,.783,1); scene.add(inlay);
+  const edge=new THREE.Mesh(new THREE.BoxGeometry(5.06,.03,22.06),M('#9C7A33',{metalness:.5,roughness:.35})); edge.position.set(0,.70,1); scene.add(edge);
+  for(let i=0;i<4;i++){ const p=new THREE.Mesh(new THREE.BoxGeometry(1.4,.7,.5),M('#3B2619')); p.position.set(0,.35,-7.5+i*5.8); scene.add(p); }
+  obstacles.push({x1:-2.55,x2:2.55,z1:-10.05,z2:12.05});
+  // small seat mics / notepads along the table
+  const padM=M('#F2F2EE',{roughness:.9});
+
+  // 60 chairs: 27 + 27 on long sides, 6 on far end; side facing board has none
+  const sideZ=i=>-9.2+i*(20.4/26);
+  for(let i=0;i<27;i++) seats.push({x:-3.12,z:sideZ(i),yaw:Math.PI/2});
+  for(let i=0;i<27;i++) seats.push({x: 3.12,z:sideZ(i),yaw:-Math.PI/2});
+  for(let i=0;i<6;i++)  seats.push({x:-2+i*.8,z:12.62,yaw:Math.PI});
+  seats.push({x:6.3,z:-15.25,yaw:0,teacher:true});
+  seats.forEach((s,i)=>{
+    const c=makeChair(!!s.teacher); c.g.position.set(s.x,0,s.z); c.g.rotation.y=s.yaw; c.g.userData.seat=i; scene.add(c.g);
+    s.group=c.g; s.mats=c.mats; s.base=c.base;
+    if(!s.teacher){
+      const fx=Math.sin(s.yaw), fz=Math.cos(s.yaw);
+      const pad=new THREE.Mesh(new THREE.BoxGeometry(.24,.008,.32),padM); pad.position.set(s.x+fx*.62,.784,s.z+fz*.62); pad.rotation.y=s.yaw; scene.add(pad);
+    }
+  });
+  // plants in corners
+  for(const [x,z] of [[-9,-16],[9,-16],[-9,15],[9,15]]){
+    const pot=new THREE.Mesh(new THREE.CylinderGeometry(.32,.26,.6,16),M('#2F3540')); pot.position.set(x,.3,z); scene.add(pot);
+    for(let k=0;k<5;k++){ const lf=new THREE.Mesh(new THREE.SphereGeometry(.38-k*.04,12,10),M(k%2?'#3E6B45':'#4B7C52',{roughness:.9})); lf.position.set(x+Math.sin(k*2.1)*.15,.9+k*.22,z+Math.cos(k*2.1)*.15); scene.add(lf); }
+  }
+  // wall clock
+  const clk=new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,.05,32),M('#F5F5F2')); clk.rotation.x=Math.PI/2; clk.position.set(-6.5,3.6,HALL.zMin+.04); scene.add(clk);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(.35,.03,8,32),M('#30343C')); ring.position.set(-6.5,3.6,HALL.zMin+.06); scene.add(ring);
+
+  addEventListener('resize',resize); resize();
+}
+function resize(){
+  if(!renderer) return;
+  const w=innerWidth,h=innerHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+}
+function wrapLines(c,text,maxW){
+  const out=[];
+  for(const para of text.split('\n')){
+    const words=para.split(' '); let line='';
+    for(const w of words){ const t=line?line+' '+w:w; if(c.measureText(t).width>maxW && line){ out.push(line); line=w; } else line=t; }
+    out.push(line);
+  }
+  return out;
+}
+function drawBoard(){
+  if(!boardCv) return;
+  const c=boardCv.getContext('2d'); const W=1600,H=600;
+  c.fillStyle='#F7F8FA'; c.fillRect(0,0,W,H);
+  c.fillStyle='#E9EDF2'; c.fillRect(0,H-6,W,6);
+  c.direction='rtl'; c.textAlign='right'; c.textBaseline='top';
+  c.fillStyle='#0F2A4A'; c.font='700 64px "Noto Kufi Arabic", Tahoma, sans-serif';
+  c.fillText(ST.title||'مرحبًا بكم في قاعة المجلس', W-70, 46);
+  c.fillStyle='#9C7A33'; c.fillRect(70,140,W-140,4);
+  c.font='500 46px "IBM Plex Sans Arabic", Tahoma, sans-serif'; c.fillStyle='#1B2433';
+  const body = ST.board || 'يرجى الجلوس في مقعد فارغ، وإبقاء الميكروفون مغلقًا.\nلطلب الكلام: اضغط «رفع اليد» وانتظر إذن الأستاذ.';
+  const lines=wrapLines(c,body,W-160).slice(0,7);
+  lines.forEach((l,i)=>c.fillText(l,W-70,178+i*60));
+  if(boardTex) boardTex.needsUpdate=true;
+}
+
+/* =========================================================
+   Peers & avatars
+   ========================================================= */
+const avatars=new Map(); // peer -> {P,label,key,target,cur}
+let me=null; // my own avatar
+let lastPeers=[];
+function myPeerId(){ const p=lastPeers.find(p=>p.sameTab); return p?p.peer:null; }
+function entered(p){ return p && p.presence && typeof p.presence.n==='string' && p.presence.n; }
+function occupancy(){
+  const occ=new Map();
+  for(const p of lastPeers){ if(!entered(p)) continue; const s=p.presence.s; if(typeof s!=='number'||s<0||s>60) continue;
+    const cur=occ.get(s); if(!cur || p.peer<cur.peer) occ.set(s,p); }
+  return occ;
+}
+function teacherPresent(){ return !!teacherPeer && lastPeers.some(p=>p.peer===teacherPeer); }
+function onPeers(ch){
+  lastPeers=ch.peers;
+  teacherPeer = room && ch.peers.some(p=>p.peer===room.hostId) ? room.hostId : null;
+  if(!teacherPeer && !isTeacher()){ ST.allowed=[]; ST.open=false; }
+  for(const p of ch.left){ const c=outCalls.get(p.peer); if(c) try{c.close()}catch(e){} outCalls.delete(p.peer); detachRemote(p.peer); }
+  if(S.mic && !canSpeak()) micOff(true);
+  refreshMicBtn(); if(S.mic) callEveryone();
+  const n=ch.peers.filter(entered).length;
+  $('liveCount').textContent = n ? `في القاعة الآن: ${n}` : '';
+  if(ch.joined.length && isTeacher() && S.joined) schedState();
+  if(!S.joined) return;
+  // seat conflicts: lower peer id keeps the seat
+  if(S.seat>=0){
+    const occ=occupancy().get(S.seat);
+    if(occ && !occ.sameTab){ standUp(true); toast('سبقك شخص آخر إلى هذا المقعد. اختر مقعدًا آخر.'); }
+  }
+  syncAvatars(); renderPeople(); updateConn();
+}
+function syncAvatars(){
+  const seen=new Set();
+  for(const p of lastPeers){
+    if(p.sameTab || !entered(p)) continue;
+    const pr=p.presence; seen.add(p.peer);
+    const c=Array.isArray(pr.c)?pr.c:[]; const key=[pr.g,c[0],c[1],c[2]].join('|');
+    let A=avatars.get(p.peer);
+    if(!A || A.key!==key){
+      if(A) scene.remove(A.P.root);
+      const P=makeAvatar({g:pr.g==='f'?'f':'m',o:safeColor(c[0],'#1F2A44'),a:safeColor(c[1],'#ECE8E0'),k:safeColor(c[2],'#E0B793')});
+      const label=makeLabel(); label.position.y=2.08; P.root.add(label);
+      scene.add(P.root); A={P,label,key,cur:null,speakUntil:A?A.speakUntil:0}; avatars.set(p.peer,A);
+    }
+    A.pr=pr;
+  }
+  for(const [k,A] of avatars) if(!seen.has(k)){ scene.remove(A.P.root); avatars.delete(k); }
+  // chair colours
+  const occ=occupancy();
+  seats.forEach((s,i)=>{
+    const o=occ.get(i); const col = !o ? s.base : (o.sameTab ? new THREE.Color('#9C7A33') : new THREE.Color('#6E1F24'));
+    s.mats[0].color.copy(col);
+  });
+}
+function safeColor(v,d){ return (typeof v==='string' && /^#[0-9a-fA-F]{6}$/.test(v)) ? v : d; }
+
+/* =========================================================
+   Me: presence, seating, movement
+   ========================================================= */
+function isTeacher(){ return S.role==='T'; }
+let presTimer=0;
+function pushPresence(force){
+  if(!room || !S.joined) return;
+  const now=performance.now();
+  if(!force && now-presTimer<200) return; presTimer=now;
+  room.presence({
+    n:S.name, g:S.g, r:S.role, c:[S.c.o,S.c.a,S.c.k],
+    s:S.seat, p:[+S.x.toFixed(2),+S.z.toFixed(2),+S.yaw.toFixed(2)],
+    h:S.hand?1:0, ht:S.ht, m:S.mic?1:0
+  }).catch(()=>{});
+}
+function sitIn(i){
+  const s=seats[i]; if(!s) return;
+  if(s.teacher && !isTeacher()){ toast('هذا كرسي الأستاذ، اختر مقعدًا حول الطاولة.'); return; }
+  if(!s.teacher && isTeacher()){ toast('مقعدك هو كرسي الأستاذ خلف المكتب بجانب السبورة.'); }
+  const o=occupancy().get(i);
+  if(o && !o.sameTab){ toast(`هذا المقعد محجوز لـ ${o.presence.n}.`); return; }
+  S.seat=i; S.x=s.x; S.z=s.z; S.yaw=s.yaw;
+  S.look.yaw=s.yaw; S.look.pitch=-.05;
+  pushPresence(true); syncAvatars(); refreshSeatBtn();
+  toast(i===TEACHER_SEAT?'جلست في كرسي الأستاذ.':`جلست في المقعد ${i+1}. لا يمكن لغيرك الجلوس فيه.`);
+}
+function standUp(silent){
+  if(S.seat<0) return;
+  const s=seats[S.seat];
+  S.x=s.x-Math.sin(s.yaw)*.85; S.z=s.z-Math.cos(s.yaw)*.85; S.yaw=s.yaw+Math.PI;
+  S.seat=-1; pushPresence(true); syncAvatars(); refreshSeatBtn();
+  if(!silent) toast('قمت من المقعد، وأصبح متاحًا لغيرك.');
+}
+function nearestFreeSeat(){
+  const occ=occupancy(); let best=-1,bd=1.7;
+  seats.forEach((s,i)=>{
+    if(!!s.teacher!==isTeacher()) return;
+    const o=occ.get(i); if(o && !o.sameTab) return;
+    const d=Math.hypot(s.x-S.x,s.z-S.z); if(d<bd){bd=d;best=i;}
+  });
+  return best;
+}
+function refreshSeatBtn(){
+  const cue=$('seatCue');
+  if(S.seat>=0){ $('seatLbl').textContent='قيام'; cue.hidden=true; return; }
+  const n=nearestFreeSeat();
+  $('seatLbl').textContent = n>=0 ? 'اجلس' : 'مقعد';
+  if(n>=0){ cue.hidden=false; cue.textContent = n===TEACHER_SEAT ? 'اضغط «اجلس» للجلوس في كرسي الأستاذ' : `المقعد ${n+1} فارغ، اضغط «اجلس»`; }
+  else cue.hidden=true;
+}
+$('seatBtn').onclick=()=>{
+  if(S.seat>=0) return standUp();
+  const n=nearestFreeSeat();
+  if(n>=0) sitIn(n); else toast('اقترب من كرسي فارغ، أو انقر على أي كرسي فارغ مباشرة.');
+};
+
+/* input */
+const keys={};
+addEventListener('keydown',e=>{
+  if(!S.joined || /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  keys[e.key.toLowerCase()]=true;
+  if(e.key==='m'||e.key==='M') $('micBtn').click();
+  if(e.key==='h'||e.key==='H') { if(!isTeacher()) $('handBtn').click(); }
+  if(e.key==='b'||e.key==='B') lookAtBoard();
+  if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault();
+});
+addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; });
+const joy={x:0,y:0,id:null};
+(function(){
+  const j=$('joy'), k=$('knob');
+  const set=e=>{ const r=j.getBoundingClientRect(); let dx=e.clientX-(r.left+r.width/2), dy=e.clientY-(r.top+r.height/2);
+    const m=Math.hypot(dx,dy), R=r.width/2-12; if(m>R){dx*=R/m;dy*=R/m;}
+    joy.x=dx/R; joy.y=dy/R; k.style.transform=`translate(${dx}px,${dy}px)`; };
+  j.addEventListener('pointerdown',e=>{ joy.id=e.pointerId; j.setPointerCapture(e.pointerId); set(e); });
+  j.addEventListener('pointermove',e=>{ if(e.pointerId===joy.id) set(e); });
+  const end=()=>{ joy.id=null; joy.x=joy.y=0; k.style.transform=''; };
+  j.addEventListener('pointerup',end); j.addEventListener('pointercancel',end);
+})();
+let drag=null;
+function bindLook(){
+  const cv=$('scene');
+  cv.addEventListener('pointerdown',e=>{ drag={id:e.pointerId,x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY}; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove',e=>{
+    if(!drag||e.pointerId!==drag.id) return;
+    const dx=e.clientX-drag.x, dy=e.clientY-drag.y; drag.x=e.clientX; drag.y=e.clientY;
+    if(S.seat>=0){ S.look.yaw-=dx*.005; S.look.pitch=clamp(S.look.pitch-dy*.004,-1.0,1.0); }
+    else { S.yaw-=dx*.005; S.camPitch=clamp(S.camPitch-dy*.004,-.8,.5); }
+  });
+  cv.addEventListener('pointerup',e=>{
+    if(!drag) return; const moved=Math.hypot(e.clientX-drag.sx,e.clientY-drag.sy); drag=null;
+    if(moved<7) pickChair(e.clientX,e.clientY);
+  });
+  cv.addEventListener('pointercancel',()=>drag=null);
+}
+function pickChair(x,y){
+  const v=new THREE.Vector2((x/innerWidth)*2-1,-(y/innerHeight)*2+1);
+  raycaster.setFromCamera(v,camera);
+  const hits=raycaster.intersectObjects(seats.map(s=>s.group),true);
+  for(const h of hits){ const g=h.object.userData.chair; if(g && typeof g.userData.seat==='number'){
+    if(S.seat===g.userData.seat) return;
+    if(S.seat>=0) standUp(true);
+    sitIn(g.userData.seat); return; } }
+}
+function lookAtBoard(){
+  if(S.seat>=0){
+    const eye=eyePos(); S.look.yaw=Math.atan2(BOARD.x-eye.x,BOARD.z-eye.z);
+    const dist=Math.hypot(BOARD.x-eye.x,BOARD.z-eye.z); S.look.pitch=Math.atan2(BOARD.y-eye.y,dist);
+  } else { S.yaw=Math.atan2(BOARD.x-S.x,BOARD.z-S.z); S.camPitch=-.05; }
+  toast('اتجاهك الآن نحو السبورة.',1800);
+}
+$('boardBtn').onclick=lookAtBoard;
+
+function collide(){
+  S.x=clamp(S.x,-HALL.x+.45,HALL.x-.45); S.z=clamp(S.z,HALL.zMin+.6,HALL.zMax-.45);
+  for(const o of obstacles){
+    const r=.32;
+    if(S.x>o.x1-r && S.x<o.x2+r && S.z>o.z1-r && S.z<o.z2+r){
+      const dl=S.x-(o.x1-r), dr=(o.x2+r)-S.x, dt=S.z-(o.z1-r), db=(o.z2+r)-S.z; const m=Math.min(dl,dr,dt,db);
+      if(m===dl) S.x=o.x1-r; else if(m===dr) S.x=o.x2+r; else if(m===dt) S.z=o.z1-r; else S.z=o.z2+r;
+    }
+  }
+}
+function eyePos(){
+  const s=seats[S.seat]; const fx=Math.sin(s.yaw), fz=Math.cos(s.yaw);
+  return {x:s.x-fx*.02, y:1.38, z:s.z-fz*.02};
+}
+
+/* =========================================================
+   Main loop
+   ========================================================= */
+let last=performance.now(), tAcc=0, walking=false, rafId=0, lostSince=0;
+function tick(now){
+  if(!S.joined) return;
+  rafId=requestAnimationFrame(tick);
+  const dt=Math.min(.05,(now-last)/1000); last=now; tAcc+=dt;
+  // movement
+  walking=false;
+  if(S.seat<0){
+    const fwd=(keys['w']||keys['arrowup']?1:0)-(keys['s']||keys['arrowdown']?1:0)-joy.y;
+    const turn=(keys['a']||keys['arrowleft']?1:0)-(keys['d']||keys['arrowright']?1:0);
+    const strafe=(keys['e']?1:0)-(keys['q']?1:0)+joy.x;
+    S.yaw+=turn*1.9*dt;
+    const sp=2.6, fx=Math.sin(S.yaw), fz=Math.cos(S.yaw), rx=-Math.cos(S.yaw), rz=Math.sin(S.yaw);
+    const mx=(fx*fwd+rx*strafe), mz=(fz*fwd+rz*strafe); const mm=Math.hypot(mx,mz);
+    if(mm>.05){ const k=Math.min(1,mm); S.x+=mx/mm*k*sp*dt; S.z+=mz/mm*k*sp*dt; collide(); walking=true; }
+    if(walking||turn) pushPresence(false);
+    if(walking) refreshSeatBtn();
+  }
+  // my avatar
+  if(me){
+    const sit=S.seat>=0; const s=sit?seats[S.seat]:null;
+    if(sit){ me.P.root.position.set(s.x-Math.sin(s.yaw)*.1,-.36,s.z-Math.cos(s.yaw)*.1); me.P.root.rotation.y=s.yaw; }
+    else { me.P.root.position.set(S.x,0,S.z); me.P.root.rotation.y=S.yaw; }
+    poseAvatar(me.P, sit?'sit':(walking?'walk':'stand'), tAcc, S.hand);
+    me.P.root.visible=!sit; // first-person when seated
+    drawLabel(me.label,S.name,isTeacher(),S.hand,performance.now()<mySpeakUntil,S.mic);
+  }
+  // others
+  const occNow=occupancy();
+  for(const [peer,A] of avatars){
+    const pr=A.pr||{}; const si=typeof pr.s==='number'?pr.s:-1;
+    const occOwner=si>=0?occNow.get(si):null; const sit=si>=0 && occOwner && occOwner.peer===peer;
+    let tx,tz,ty=0,tyaw;
+    if(sit){ const s=seats[si]; tx=s.x-Math.sin(s.yaw)*.1; tz=s.z-Math.cos(s.yaw)*.1; ty=-.36; tyaw=s.yaw; }
+    else { const p=Array.isArray(pr.p)?pr.p:[0,14.6,Math.PI]; tx=+p[0]||0; tz=+p[1]||0; tyaw=+p[2]||0; }
+    if(!A.cur) A.cur={x:tx,z:tz,y:ty,yaw:tyaw};
+    const moving=!sit && Math.hypot(tx-A.cur.x,tz-A.cur.z)>.04;
+    const k=1-Math.pow(.0015,dt);
+    A.cur.x=lerp(A.cur.x,tx,k); A.cur.z=lerp(A.cur.z,tz,k); A.cur.y=lerp(A.cur.y,ty,k); A.cur.yaw+=angDiff(A.cur.yaw,tyaw)*k;
+    A.P.root.position.set(A.cur.x,A.cur.y,A.cur.z); A.P.root.rotation.y=A.cur.yaw;
+    poseAvatar(A.P, sit?'sit':(moving?'walk':'stand'), tAcc+peer.length, !!pr.h);
+    drawLabel(A.label, String(pr.n||'').slice(0,40), pr.r==='T', !!pr.h, performance.now()<(A.speakUntil||0), !!pr.m);
+  }
+  // camera
+  if(S.seat>=0){
+    const e=eyePos(); camera.position.set(e.x,e.y,e.z);
+    const cp=Math.cos(S.look.pitch);
+    camera.lookAt(e.x+Math.sin(S.look.yaw)*cp, e.y+Math.sin(S.look.pitch), e.z+Math.cos(S.look.yaw)*cp);
+  } else {
+    const dx=Math.sin(S.yaw), dz=Math.cos(S.yaw), dist=3.3;
+    let cx=S.x-dx*dist, cz=S.z-dz*dist, cy=1.75+.9-S.camPitch*2.2;
+    cx=clamp(cx,-HALL.x+.3,HALL.x-.3); cz=clamp(cz,HALL.zMin+.3,HALL.zMax-.3); cy=clamp(cy,.6,4.6);
+    camera.position.set(cx,cy,cz); camera.lookAt(S.x,1.45,S.z);
+  }
+  // "lost" helper: highlight board button when facing away
+  const fy = S.seat>=0 ? S.look.yaw : S.yaw;
+  const ref = S.seat>=0 ? eyePos() : {x:S.x,z:S.z};
+  const off=Math.abs(angDiff(fy,Math.atan2(BOARD.x-ref.x,BOARD.z-ref.z)));
+  if(off>1.25){ if(!lostSince) lostSince=now; } else lostSince=0;
+  $('boardBtn').classList.toggle('pulse', !!lostSince && now-lostSince>2500);
+  // timer
+  const secs=Math.floor((Date.now()-S.enteredAt)/1000);
+  const tt=`${String(Math.floor(secs/60)).padStart(2,'0')}:${String(secs%60).padStart(2,'0')}`;
+  if($('timer').textContent!==tt) $('timer').textContent=tt;
+  renderer.render(scene,camera);
+}
+
+/* =========================================================
+   Enter
+   ========================================================= */
+let actx=null, netStatus='', warnedNoHost=false;
+function applyRoleUI(){
+  $('handBtn').hidden=isTeacher(); $('panelBtn').hidden=!isTeacher(); $('teacherPanel').hidden=!isTeacher();
+  if(!isTeacher()){ clearInterval(stateTimer); if(S.seat===TEACHER_SEAT) standUp(true); }
+  refreshMicBtn();
+}
+function startNet(){
+  if(room){ try{room.destroy()}catch(e){} room=null; }
+  if(typeof mqtt==='undefined'){ netStatus='lib'; updateConn(); toast('تعذّر تحميل مكتبة الاتصال. تحقق من الإنترنت ثم أعد الدخول.',6000); return; }
+  const net=makeNet(S.code,isTeacher(),(st)=>{
+    if(room!==net) return;
+    netStatus=st;
+    if(st==='taken'){ toast('يوجد أستاذ داخل هذه القاعة بالفعل، فدخلت كطالب.',5000); S.role='S'; applyRoleUI(); startNet(); return; }
+    if(st==='nohost' && !warnedNoHost){ warnedNoHost=true; toast('الأستاذ لم يدخل القاعة بعد. سيتم الاتصال تلقائيًا عند دخوله.',5000); }
+    if(st==='ok'){ warnedNoHost=false; pushPresence(true); if(isTeacher()) schedState(); }
+    if(st==='net') toast('مشكلة في الاتصال بالإنترنت. جارٍ إعادة المحاولة.',4000);
+    updateConn(); refreshMicBtn();
+  });
+  room=net;
+  net.onPeers(onPeers); net.on('ctl',onCtl); net.on('chat',onChat);
+  net.on('seatDenied',()=>{ standUp(true); toast('سبقك شخص آخر إلى هذا المقعد. اختر مقعدًا آخر.'); });
+  net.on('audio',onAudio);
+  pushPresence(true);
+}
+$('enterBtn').onclick=async ()=>{
+  if(!$('micOk').checked) return;
+  try{ actx=new (window.AudioContext||window.webkitAudioContext)(); await actx.resume(); }catch(e){ actx=null; }
+  if(prev){ prev.r.dispose(); prev.r.domElement.remove(); prev=null; }
+  try{ await document.fonts.load('700 40px "Noto Kufi Arabic"'); await document.fonts.load('600 40px "IBM Plex Sans Arabic"'); }catch(e){}
+  $('setup').hidden=true; $('hall').hidden=false;
+  if(!renderer){ buildHall(); bindLook(); }
+  drawBoard();
+  S.joined=true; S.enteredAt=Date.now(); S.mic=false; S.hand=false; S.ht=0; S.seat=-1;
+  $('handBtn').classList.remove('active'); $('handLbl').textContent='رفع اليد';
+  if(isTeacher()){ S.x=4.6; S.z=-13.2; S.yaw=Math.PI*0.75; }
+  else { S.x=0; S.z=14.6; S.yaw=Math.PI; }
+  me={P:makeAvatar({g:S.g,o:S.c.o,a:S.c.a,k:S.c.k}),label:makeLabel()}; me.label.position.y=2.08; me.P.root.add(me.label); scene.add(me.P.root);
+  $('roomLink').value=location.origin+location.pathname+'?room='+encodeURIComponent(S.code);
+  applyRoleUI();
+  startNet();
+  refreshSeatBtn(); syncAvatars(); renderPeople(); updateConn(); resize();
+  last=performance.now(); rafId=requestAnimationFrame(tick);
+  if(isTeacher()){
+    clearInterval(stateTimer); stateTimer=setInterval(sendState,6000);
+    setTimeout(()=>{ if(isTeacher() && S.seat<0) sitIn(TEACHER_SEAT); },400);
+    toast(`أهلًا أستاذ ${S.name.split(' ')[0]}. أرسل رابط القاعة للطلاب من لوحة «التحكم».`,5000);
+  } else {
+    toast(`أهلًا ${S.name.split(' ')[0]}. انقر على أي كرسي فارغ حول الطاولة للجلوس.`,4500);
+  }
+};
+$('copyLink').onclick=()=>{
+  const v=$('roomLink').value;
+  (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(()=>toast('نُسخ رابط القاعة. أرسله للطلاب.',2500)).catch(()=>{ $('roomLink').select(); toast('حدد الرابط وانسخه يدويًا.',2500); });
+};
+function updateConn(){
+  const chip=$('connChip'); const on=!!(room && room.connected());
+  const n=lastPeers.filter(entered).length || (S.joined?1:0);
+  chip.className='chip '+(on?'on':'off');
+  chip.textContent = on ? `متصل، ${n} في القاعة` : ({nohost:'بانتظار الأستاذ',lost:'انقطع الاتصال',net:'لا يوجد اتصال',lib:'غير متصل',err:'خطأ في الاتصال',taken:'جارٍ الاتصال'}[netStatus]||'جارٍ الاتصال');
+}
+
+/* =========================================================
+   Microphone & voice (8 kHz mu-law chunks relayed through the server)
+   ========================================================= */
+let stream=null, proc=null, srcNode=null, sink=null, mySpeakUntil=0, master=null;
+const RATE=8000, CHUNK=2000; // 0.25 s per message
+const outCalls=new Map(), inCalls=new Map(), remotes=new Map(), nextT=new Map();
+function callEveryone(){} function detachRemote(p){ nextT.delete(p); } function dropCall(){} function closeIncoming(){} function pruneCalls(){}
+function canSpeak(){
+  if(isTeacher()) return true;
+  if(!teacherPresent()) return false;
+  const mp=myPeerId();
+  return ST.open || (!!mp && ST.allowed.includes(mp));
+}
+function refreshMicBtn(){
+  const b=$('micBtn'); const allowed=canSpeak();
+  $('micIco').innerHTML = S.mic?ICON_MIC_ON:ICON_MIC_OFF;
+  b.classList.toggle('active',S.mic); b.classList.toggle('locked',!allowed && !S.mic);
+  b.setAttribute('aria-pressed',S.mic);
+  $('micLbl').textContent = S.mic ? 'مفتوح' : (allowed ? 'الميكروفون' : (teacherPresent()?'بإذن الأستاذ':'بانتظار الأستاذ'));
+}
+$('micBtn').onclick=async ()=>{
+  if(S.mic){ micOff(); return; }
+  if(!canSpeak()){ toast(teacherPresent()?'الميكروفون يحتاج إذن الأستاذ. اضغط «رفع اليد» وانتظر.':'لا يمكن الكلام قبل دخول الأستاذ إلى القاعة.'); return; }
+  await micOn();
+};
+async function micOn(){
+  if(!window.isSecureContext){ toast('الميكروفون يحتاج رابطًا آمنًا يبدأ بـ https. افتح التطبيق من رابطه في Chrome.',7000); return; }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ toast('هذا المتصفح لا يدعم الميكروفون. افتح الرابط في Chrome مباشرة، وليس داخل واتساب أو فيسبوك.',7000); return; }
+  if(!actx){ toast('الصوت غير مدعوم في هذا المتصفح.'); return; }
+  try{
+    await actx.resume();
+    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  }catch(e){
+    const n=e&&e.name; stream=null;
+    toast(n==='NotAllowedError'||n==='SecurityError' ? 'رُفض إذن الميكروفون. اضغط رمز القفل بجانب الرابط، ثم الأذونات، ثم الميكروفون، واختر «سماح»، ثم أعد المحاولة.'
+      : n==='NotFoundError' ? 'لم يُعثر على ميكروفون في هذا الجهاز.'
+      : n==='NotReadableError' ? 'الميكروفون مشغول بتطبيق آخر، مثل مكالمة أو تسجيل. أغلقه وأعد المحاولة.'
+      : 'تعذّر تشغيل الميكروفون ('+(n||'خطأ غير معروف')+').', 8000);
+    return;
+  }
+  srcNode=actx.createMediaStreamSource(stream);
+  proc=actx.createScriptProcessor(4096,1,1);
+  sink=actx.createGain(); sink.gain.value=0;
+  srcNode.connect(proc); proc.connect(sink); sink.connect(actx.destination);
+  const ratio=actx.sampleRate/RATE; let acc=0,sum=0,cnt=0, buf=new Float32Array(CHUNK), n=0;
+  proc.onaudioprocess=ev=>{
+    const inp=ev.inputBuffer.getChannelData(0);
+    for(let i=0;i<inp.length;i++){
+      sum+=inp[i]; cnt++; acc+=1;
+      if(acc>=ratio){ acc-=ratio; buf[n++]=sum/cnt; sum=0; cnt=0;
+        if(n===CHUNK){ sendChunk(buf); buf=new Float32Array(CHUNK); n=0; } }
+    }
+  };
+  S.mic=true; refreshMicBtn(); pushPresence(true);
+  toast(room&&room.connected() ? 'الميكروفون مفتوح. يسمعك الحاضرون الآن.' : 'الميكروفون يعمل، لكنك غير متصل بالقاعة بعد.',3000);
+}
+function micOff(byTeacher){
+  if(proc){ proc.onaudioprocess=null; try{ proc.disconnect(); srcNode.disconnect(); sink.disconnect(); }catch(e){} }
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  proc=srcNode=sink=stream=null;
+  const was=S.mic; S.mic=false; refreshMicBtn(); pushPresence(true);
+  if(byTeacher && was) toast('أغلق الأستاذ الميكروفون.');
+}
+function muEnc(x){ const BIAS=0x84, CLIP=32635; let s=Math.round(clamp(x,-1,1)*32767); const sign=(s>>8)&0x80; if(sign) s=-s; if(s>CLIP) s=CLIP; s+=BIAS;
+  let exp=7; for(let m=0x4000;(s&m)===0&&exp>0;exp--,m>>=1); const man=(s>>(exp+3))&0x0F; return (~(sign|(exp<<4)|man))&0xFF; }
+function muDec(u){ u=~u&0xFF; const sign=u&0x80, exp=(u>>4)&7, man=u&0x0F; let s=((man<<3)+0x84)<<exp; s-=0x84; return (sign?-s:s)/32768; }
+function sendChunk(f){
+  let e=0; for(let i=0;i<f.length;i++) e+=f[i]*f[i]; const rms=Math.sqrt(e/f.length);
+  if(rms<0.006) return; // silence
+  mySpeakUntil=performance.now()+450;
+  if(!room || !room.connected() || !canSpeak()) return;
+  let bin=''; for(let i=0;i<f.length;i++) bin+=String.fromCharCode(muEnc(f[i]*1.4));
+  room.emit('audio',{d:btoa(bin)}).catch(()=>{});
+}
+function acceptAudio(peer){ if(room && peer===room.hostId) return true; return ST.open || ST.allowed.includes(peer); }
+function onAudio(msg){
+  if(!S.joined || !actx || msg.isMe) return;
+  if(!acceptAudio(msg.peer)) return;
+  const d=msg.data&&msg.data.d; if(typeof d!=='string' || !d) return;
+  let bin; try{ bin=atob(d); }catch(e){ return; }
+  if(!master){ master=actx.createGain(); master.gain.value=1; master.connect(actx.destination); }
+  const N=bin.length, UP=3, out=new Float32Array(N*UP); let prevS=0;
+  for(let i=0;i<N;i++){ const s=muDec(bin.charCodeAt(i)); for(let k=0;k<UP;k++) out[i*UP+k]=prevS+(s-prevS)*(k+1)/UP; prevS=s; }
+  const b=actx.createBuffer(1,out.length,RATE*UP); b.getChannelData(0).set(out);
+  const src=actx.createBufferSource(); src.buffer=b; src.connect(master);
+  const now=actx.currentTime; let t=nextT.get(msg.peer)||0;
+  if(t<now+.05 || t>now+1.6) t=now+.3;
+  src.start(t); nextT.set(msg.peer,t+b.duration);
+  const A=avatars.get(msg.peer); if(A) A.speakUntil=performance.now()+(t-now+b.duration)*1000;
+  if(!$('peopleDrawer').hidden) renderPeopleSoon();
+}
+addEventListener('pointerdown',()=>{ if(actx && actx.state==='suspended') actx.resume(); },{passive:true});
+
+/* =========================================================
+   Hand raising
+   ========================================================= */
+$('handBtn').onclick=()=>{
+  S.hand=!S.hand; S.ht=S.hand?Date.now():0;
+  $('handBtn').classList.toggle('active',S.hand); $('handBtn').setAttribute('aria-pressed',S.hand);
+  $('handLbl').textContent=S.hand?'إنزال اليد':'رفع اليد';
+  pushPresence(true);
+  toast(S.hand?'رفعت يدك. انتظر إذن الأستاذ بالكلام.':'أنزلت يدك.',2200);
+};
+function lowerMyHand(){ if(!S.hand) return; $('handBtn').click(); }
+
+/* =========================================================
+   Teacher control channel
+   ========================================================= */
+let stateTimer=null, stateSoon=null;
+function schedState(){ clearTimeout(stateSoon); stateSoon=setTimeout(sendState,300); }
+function sendState(){
+  if(!room||!isTeacher()||!S.joined) return;
+  room.emit('ctl',{t:'state',open:ST.open,allowed:ST.allowed.slice(0,60),board:ST.board,title:ST.title}).catch(err=>{
+    if(err&&err.code==='not_permitted') toast('لا تملك صلاحية التحكم في هذه القاعة.');
+  });
+}
+function ctl(data){ if(room&&isTeacher()) room.emit('ctl',data).catch(()=>{}); if(data.t==='mute') closeIncoming(data.peer); }
+function onCtl(msg){
+  teacherPeer=msg.peer;
+  const d=msg.data||{};
+  if(d.t==='state'){
+    const wasAllowed=canSpeak();
+    ST.open=!!d.open; ST.allowed=Array.isArray(d.allowed)?d.allowed.filter(x=>typeof x==='string').slice(0,60):[];
+    const nb=typeof d.board==='string'?d.board.slice(0,500):''; const nt=typeof d.title==='string'?d.title.slice(0,60):'';
+    if(nb!==ST.board||nt!==ST.title){ ST.board=nb; ST.title=nt; drawBoard(); if(S.joined&&!msg.sameTab) toast('كتب الأستاذ على السبورة.',2000); }
+    if(isTeacher()){ $('openAll').checked=ST.open; }
+    if(!isTeacher() && S.joined){
+      const nowAllowed=canSpeak();
+      if(!wasAllowed && nowAllowed && !ST.open){ toast('أذن لك الأستاذ بالكلام. اضغط زر الميكروفون.',4000); lowerMyHand(); }
+      if(!nowAllowed && S.mic) micOff(true);
+    }
+    pruneCalls(); refreshMicBtn(); renderPeople(); updateConn();
+  } else if(d.t==='mute' && !isTeacher()){
+    if(d.peer==='all' || d.peer===myPeerId()) micOff(true);
+  } else if(d.t==='lower' && !isTeacher()){
+    if(d.peer==='all' || d.peer===myPeerId()) lowerMyHand();
+  }
+}
+$('openAll').onchange=e=>{ ST.open=e.target.checked; sendState(); toast(ST.open?'يمكن للجميع الآن فتح الميكروفون.':'الميكروفون الآن بإذنك فقط.',2200); renderPeople(); };
+$('muteAll').onclick=()=>{ ST.open=false; ST.allowed=[]; $('openAll').checked=false; sendState(); ctl({t:'mute',peer:'all'}); toast('كُتم جميع الطلاب.',2000); renderPeople(); };
+$('lowerAll').onclick=()=>{ ctl({t:'lower',peer:'all'}); toast('أُنزلت كل الأيدي.',2000); };
+$('boardSend').onclick=()=>{ ST.title=$('boardTitle').value.trim().slice(0,60); ST.board=$('boardText').value.trim().slice(0,500); drawBoard(); sendState(); toast('عُرض النص على السبورة.',2000); };
+$('boardClear').onclick=()=>{ ST.title=''; ST.board=''; $('boardTitle').value=''; $('boardText').value=''; drawBoard(); sendState(); };
+$('panelBtn').onclick=()=>openDrawer('peopleDrawer');
+
+/* =========================================================
+   People drawer
+   ========================================================= */
+let peopleSoon=null;
+function renderPeopleSoon(){ if(peopleSoon) return; peopleSoon=setTimeout(()=>{peopleSoon=null; renderPeople();},400); }
+function personRow(p){
+  const pr=p.presence; const row=document.createElement('div'); row.className='person';
+  const av=document.createElement('div'); av.className='av'; av.style.background=safeColor((pr.c||[])[0],'#1F2A44'); av.textContent=String(pr.n||'؟').trim().charAt(0);
+  const meta=document.createElement('div'); meta.className='meta';
+  const nm=document.createElement('div'); nm.className='nm'; nm.textContent=String(pr.n||'').slice(0,40)+(p.sameTab?' (أنت)':'');
+  const sb=document.createElement('div'); sb.className='sb';
+  const si=typeof pr.s==='number'?pr.s:-1;
+  sb.textContent = si===TEACHER_SEAT?'كرسي الأستاذ':(si>=0?`المقعد ${si+1}`:'يتجول في القاعة');
+  meta.append(nm,sb);
+  const tags=document.createElement('div'); tags.className='tags';
+  const tag=(t,c)=>{const s=document.createElement('span'); s.className='tag2 '+(c||''); s.textContent=t; tags.append(s);};
+  if(pr.r==='T') tag('أستاذ','t');
+  if(pr.h) tag('✋ يد مرفوعة','h');
+  const A=avatars.get(p.peer); const speaking = p.sameTab ? performance.now()<mySpeakUntil : (A && performance.now()<(A.speakUntil||0));
+  if(speaking) tag('يتكلم','s'); else if(pr.m) tag('ميكروفون مفتوح');
+  row.append(av,meta,tags);
+  if(isTeacher() && !p.sameTab && pr.r!=='T'){
+    const allowed=ST.allowed.includes(p.peer);
+    const b=document.createElement('button'); b.className='mini '+(allowed?'stop':'go'); b.textContent=allowed?'إيقاف':'سماح بالكلام';
+    b.onclick=()=>{
+      if(allowed){ ST.allowed=ST.allowed.filter(x=>x!==p.peer); sendState(); ctl({t:'mute',peer:p.peer}); }
+      else { ST.allowed=[...ST.allowed,p.peer]; sendState(); ctl({t:'lower',peer:p.peer}); }
+      renderPeople();
+    };
+    row.append(b);
+    if(pr.h){ const l=document.createElement('button'); l.className='mini'; l.textContent='إنزال'; l.onclick=()=>ctl({t:'lower',peer:p.peer}); row.append(l); }
+  }
+  return row;
+}
+function renderPeople(){
+  if(!S.joined) return;
+  let list=lastPeers.filter(entered);
+  if(!room){ list=[{peer:'local',sameTab:true,presence:{n:S.name,g:S.g,r:S.role,c:[S.c.o],s:S.seat,h:S.hand?1:0,m:S.mic?1:0}}]; }
+  list=list.slice().sort((a,b)=>(b.presence.r==='T')-(a.presence.r==='T') || String(a.presence.n).localeCompare(String(b.presence.n),'ar'));
+  const hands=list.filter(p=>p.presence.h).sort((a,b)=>(+a.presence.ht||0)-(+b.presence.ht||0));
+  $('peopleCount').textContent=`(${list.length})`;
+  $('handsT').hidden=!hands.length;
+  const hl=$('handsList'); hl.textContent=''; hands.forEach(p=>hl.append(personRow(p)));
+  const pl=$('peopleList'); pl.textContent='';
+  list.forEach(p=>pl.append(personRow(p)));
+  const hb=$('handBadge'); hb.hidden=!(isTeacher()&&hands.length); hb.textContent=hands.length;
+}
+function openDrawer(id){
+  document.querySelectorAll('.drawer').forEach(d=>d.hidden=d.id!==id);
+  if(id==='peopleDrawer') renderPeople();
+  if(id==='chatDrawer'){ unread=0; $('chatBadge').hidden=true; setTimeout(()=>$('chatIn').focus(),50); }
+}
+$('peopleBtn').onclick=()=>{ const d=$('peopleDrawer'); d.hidden?openDrawer('peopleDrawer'):d.hidden=true; };
+$('chatBtn').onclick=()=>{ const d=$('chatDrawer'); d.hidden?openDrawer('chatDrawer'):d.hidden=true; };
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('.drawer').hidden=true);
+
+/* =========================================================
+   Chat
+   ========================================================= */
+let unread=0;
+function addMsg(name,text,mine,teacher){
+  $('chatEmpty').hidden=true;
+  const m=document.createElement('div'); m.className='msg'+(mine?' me':'');
+  const b=document.createElement('b'); b.textContent=(teacher?'الأستاذ ':'')+name; m.append(b, document.createTextNode(text));
+  $('chatLog').append(m); while($('chatLog').children.length>120) $('chatLog').children[1].remove();
+  m.scrollIntoView({block:'end'});
+  if($('chatDrawer').hidden && !mine){ unread++; $('chatBadge').hidden=false; $('chatBadge').textContent=unread; }
+}
+function onChat(msg){
+  if(!S.joined) return;
+  const t=msg.data&&typeof msg.data.m==='string'?msg.data.m.slice(0,300):''; if(!t) return;
+  const p=lastPeers.find(x=>x.peer===msg.peer); const pr=p&&p.presence||{};
+  addMsg(String(pr.n||'مشارك').slice(0,40),t,msg.sameTab,pr.r==='T' && msg.peer===teacherPeer || (msg.sameTab&&isTeacher()));
+}
+$('chatForm').onsubmit=e=>{
+  e.preventDefault(); const v=$('chatIn').value.trim(); if(!v) return;
+  if(room){ room.emit('chat',{m:v.slice(0,300)}).then(()=>{$('chatIn').value='';}).catch(err=>toast(err&&err.code==='not_permitted'?'صلاحيتك لا تسمح بإرسال الرسائل.':'تعذّر إرسال الرسالة. تحقق من الاتصال.')); }
+  else { addMsg(S.name,v,true,isTeacher()); $('chatIn').value=''; }
+};
+
+/* =========================================================
+   Withdraw
+   ========================================================= */
+$('exitBtn').onclick=()=>{ $('exitModal').hidden=false; $('exitNo').focus(); };
+$('exitNo').onclick=()=>{ $('exitModal').hidden=true; };
+$('exitYes').onclick=()=>{
+  $('exitModal').hidden=true;
+  micOff(); S.hand=false;
+  for(const p of [...inCalls.keys()]) dropCall(p);
+  for(const p of [...remotes.keys()]) detachRemote(p);
+  if(room){ room.destroy(); room=null; } lastPeers=[]; teacherPeer=null; netStatus='';
+  S.joined=false; S.seat=-1; cancelAnimationFrame(rafId); clearInterval(stateTimer);
+  if(actx){ try{actx.close();}catch(e){} actx=null; }
+  for(const [k,A] of avatars) scene.remove(A.P.root); avatars.clear();
+  if(me){ scene.remove(me.P.root); me=null; }
+  seats.forEach(s=>s.mats[0].color.copy(s.base));
+  $('hall').hidden=true; $('exit').hidden=false;
+};
+$('againBtn').onclick=()=>{
+  $('exit').hidden=true; $('setup').hidden=false; $('micOk').checked=false; $('enterBtn').disabled=true; showStep(4);
+};
+addEventListener('pagehide',()=>{ if(room){ try{room.destroy()}catch(e){} } });
+</script>
+</body>
+</html>
